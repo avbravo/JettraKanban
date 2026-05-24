@@ -1,0 +1,4 @@
+# JettraKanban Credentials (encrypted)
+# Auto-generated. Do not edit manually.
+
+ENC:Oa04WGsjJX/vo9XDZv6Rp8JYTYz7zoK3jXZLsdC7P5yWzbZhzfL4bg9erTl1xjv7Mn6yftMEHyIKNvg7W1K1bj2bvsf1BM5hL9++Zbx7MoRq029Qvt8I7nJ8Z3T+ONggSfq/+8XRo2YvpMvmk5EyUt0UM48dNoZt+VhUXbvHQl7C9RRVd+z6GBkCo9bQKu5wuZQNx0OcGbrHCT7U5Yo8Bj4Ih6Z998zqhKHl11BLhOZAuEzTNxXzpbv7GE3a2kcF+cRWonKsuecEBec=

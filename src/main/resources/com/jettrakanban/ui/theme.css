@@ -1,0 +1,121 @@
+.root {
+    -fx-font-family: "Orbitron", "Rajdhani", "Segoe UI";
+}
+
+.app-root {
+    -bg-deep: #090f1a;
+    -bg-mid: #101a2b;
+    -panel: rgba(10, 24, 45, 0.72);
+    -panel-strong: rgba(16, 38, 68, 0.9);
+    -line-glow: #1bf2ff;
+    -accent: #00f5b8;
+    -accent-soft: rgba(0, 245, 184, 0.2);
+    -text-main: #e9f4ff;
+    -text-soft: #96b8d7;
+
+    -fx-background-color:
+        radial-gradient(center 20% 10%, radius 65%, rgba(36, 95, 150, 0.32), transparent),
+        linear-gradient(to bottom right, -bg-deep, -bg-mid);
+}
+
+.top-bar {
+    -fx-background-color: linear-gradient(to right, rgba(8, 21, 43, 0.92), rgba(11, 32, 59, 0.86));
+    -fx-border-color: rgba(27, 242, 255, 0.24);
+    -fx-border-width: 0 0 1 0;
+}
+
+.label {
+    -fx-text-fill: #e9f4ff;
+}
+
+.text-field,
+.password-field,
+.combo-box,
+.button,
+.text-area {
+    -fx-background-radius: 10;
+    -fx-border-radius: 10;
+}
+
+.text-field,
+.password-field,
+.combo-box,
+.text-area {
+    -fx-background-color: rgba(12, 31, 56, 0.92);
+    -fx-border-color: rgba(27, 242, 255, 0.26);
+    -fx-text-fill: -text-main;
+    -fx-prompt-text-fill: #6f91b3;
+}
+
+.button {
+    -fx-background-color: linear-gradient(to bottom, rgba(0, 245, 184, 0.88), rgba(0, 192, 212, 0.85));
+    -fx-text-fill: #07202e;
+    -fx-font-weight: 700;
+    -fx-cursor: hand;
+}
+
+.button:hover {
+    -fx-effect: dropshadow(gaussian, rgba(27, 242, 255, 0.45), 14, 0.35, 0, 0);
+}
+
+.cta-btn {
+    -fx-background-color: linear-gradient(to bottom right, #00f5b8, #12d9ff);
+}
+
+.column-pane {
+    -fx-background-color: linear-gradient(to bottom, rgba(12, 28, 51, 0.85), rgba(9, 20, 38, 0.8));
+    -fx-border-color: rgba(27, 242, 255, 0.22);
+    -fx-border-width: 1;
+    -fx-border-radius: 14;
+    -fx-background-radius: 14;
+    -fx-min-width: 280;
+}
+
+.column-title {
+    -fx-font-size: 18px;
+    -fx-text-fill: -line-glow;
+    -fx-font-weight: 800;
+}
+
+.cards-box {
+    -fx-background-color: rgba(255, 255, 255, 0.02);
+    -fx-background-radius: 12;
+    -fx-padding: 4;
+}
+
+.card-pane {
+    -fx-background-color: linear-gradient(to bottom right, rgba(20, 45, 74, 0.92), rgba(12, 31, 56, 0.9));
+    -fx-border-color: rgba(0, 245, 184, 0.32);
+    -fx-border-radius: 12;
+    -fx-background-radius: 12;
+}
+
+.card-pane:hover {
+    -fx-effect: dropshadow(gaussian, rgba(0, 245, 184, 0.28), 18, 0.3, 0, 0);
+}
+
+.card-title {
+    -fx-font-size: 14px;
+    -fx-font-weight: 800;
+    -fx-text-fill: #d9f7ff;
+}
+
+.card-body {
+    -fx-font-size: 12px;
+    -fx-text-fill: -text-soft;
+}
+
+.footer {
+    -fx-background-color: rgba(7, 18, 36, 0.72);
+    -fx-border-color: rgba(27, 242, 255, 0.2);
+    -fx-border-width: 1 0 0 0;
+}
+
+.board-scroll {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+}
+
+.board-scroll > .viewport {
+    -fx-background-color: transparent;
+}
