@@ -84,25 +84,48 @@
 }
 
 .card-pane {
-    -fx-background-color: linear-gradient(to bottom right, rgba(20, 45, 74, 0.92), rgba(12, 31, 56, 0.9));
-    -fx-border-color: rgba(0, 245, 184, 0.32);
+    -fx-background-color: #0d0d0d;
+    -fx-border-color: #353535;
     -fx-border-radius: 12;
     -fx-background-radius: 12;
 }
 
 .card-pane:hover {
-    -fx-effect: dropshadow(gaussian, rgba(0, 245, 184, 0.28), 18, 0.3, 0, 0);
+    -fx-effect: dropshadow(gaussian, rgba(255, 255, 255, 0.16), 16, 0.24, 0, 0);
 }
 
 .card-title {
     -fx-font-size: 14px;
     -fx-font-weight: 800;
-    -fx-text-fill: #d9f7ff;
+    -fx-text-fill: #ffffff;
 }
 
 .card-body {
     -fx-font-size: 12px;
-    -fx-text-fill: -text-soft;
+    -fx-text-fill: #f3f3f3;
+}
+
+.card-pane .combo-box,
+.card-pane .combo-box .list-cell {
+    -fx-background-color: #141414;
+    -fx-border-color: #474747;
+    -fx-text-fill: #ffffff;
+}
+
+.card-pane .combo-box .arrow-button {
+    -fx-background-color: #252525;
+}
+
+.modal-description-area {
+    -fx-background-color: #ffffff;
+    -fx-control-inner-background: #ffffff;
+    -fx-border-color: #bdbdbd;
+    -fx-text-fill: #111111;
+    -fx-prompt-text-fill: #666666;
+}
+
+.modal-description-area .content {
+    -fx-background-color: #ffffff;
 }
 
 .footer {
@@ -118,4 +141,34 @@
 
 .board-scroll > .viewport {
     -fx-background-color: transparent;
+}
+
+.card-modal-overlay {
+    -fx-background-color: rgba(2, 10, 20, 0.62);
+    -fx-padding: 24;
+}
+
+.card-modal {
+    -fx-background-color: linear-gradient(to bottom, rgba(10, 28, 51, 0.96), rgba(8, 20, 39, 0.95));
+    -fx-border-color: rgba(27, 242, 255, 0.28);
+    -fx-border-radius: 14;
+    -fx-background-radius: 14;
+    -fx-effect: dropshadow(gaussian, rgba(0, 245, 184, 0.22), 22, 0.35, 0, 0);
+}
+
+.card-modal-title {
+    -fx-font-size: 18px;
+    -fx-font-weight: 800;
+    -fx-text-fill: -line-glow;
+}
+
+.subtle-btn {
+    -fx-background-color: rgba(9, 24, 44, 0.95);
+    -fx-text-fill: -text-main;
+    -fx-border-color: rgba(27, 242, 255, 0.26);
+    -fx-border-width: 1;
+}
+
+.subtle-btn:hover {
+    -fx-background-color: rgba(13, 34, 60, 0.95);
 }

@@ -17,6 +17,7 @@ import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.Dragboard;
@@ -25,6 +26,7 @@ import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 
 import java.io.IOException;
@@ -36,8 +38,10 @@ import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -70,6 +74,14 @@ public class KanbanBoardView extends BorderPane {
 
     private final Map<KanbanColumn, VBox> columnPanes = new EnumMap<>(KanbanColumn.class);
     private final Map<String, KanbanCard> cardsByItemId = new HashMap<>();
+    private final StackPane boardLayer = new StackPane();
+
+    private final StackPane cardModalOverlay = new StackPane();
+    private final Label cardModalHeader = new Label();
+    private final TextField cardTitleField = new TextField();
+    private final TextArea cardBodyArea = new TextArea();
+    private final ComboBox<KanbanColumn> cardColumnBox = new ComboBox<>();
+    private Consumer<CardInput> cardModalSaveAction;
 
     // Common buttons promoted to instance variables
     private final Button connectBtn = new Button("Conectar");
@@ -260,7 +272,7 @@ public class KanbanBoardView extends BorderPane {
         refreshBoard();
     }
 
-    private ScrollPane buildBoard() {
+    private StackPane buildBoard() {
         HBox columns = new HBox(16);
         columns.setPadding(new Insets(14));
 
@@ -275,7 +287,70 @@ public class KanbanBoardView extends BorderPane {
         scrollPane.setFitToHeight(true);
         scrollPane.setFitToWidth(true);
         scrollPane.getStyleClass().add("board-scroll");
-        return scrollPane;
+
+        cardModalOverlay.getStyleClass().add("card-modal-overlay");
+        cardModalOverlay.setVisible(false);
+        cardModalOverlay.setManaged(false);
+
+        VBox modalCard = new VBox(12);
+        modalCard.getStyleClass().add("card-modal");
+        modalCard.setMaxWidth(540);
+        modalCard.setPadding(new Insets(20));
+
+        cardModalHeader.getStyleClass().add("card-modal-title");
+
+        cardTitleField.setPromptText("Titulo de la tarjeta");
+        cardBodyArea.setPromptText("Descripcion / acceptance criteria");
+        cardBodyArea.setPrefRowCount(6);
+        cardBodyArea.getStyleClass().add("modal-description-area");
+
+        cardColumnBox.getItems().addAll(KanbanColumn.values());
+        cardColumnBox.setCellFactory(cell -> new KanbanColumnListCell());
+        cardColumnBox.setButtonCell(new KanbanColumnListCell());
+
+        Label titleLabel = new Label("Titulo");
+        Label bodyLabel = new Label("Descripcion");
+        Label columnLabel = new Label("Columna");
+
+        Button cancelBtn = new Button("Cancelar");
+        cancelBtn.getStyleClass().add("subtle-btn");
+        cancelBtn.setOnAction(event -> hideCardModal());
+
+        Button saveBtn = new Button("Guardar");
+        saveBtn.disableProperty().bind(cardTitleField.textProperty().isEmpty());
+        saveBtn.setOnAction(event -> {
+            if (cardModalSaveAction == null) {
+                hideCardModal();
+                return;
+            }
+            CardInput input = new CardInput(
+                    cardTitleField.getText().trim(),
+                    cardBodyArea.getText().trim(),
+                    cardColumnBox.getValue()
+            );
+            hideCardModal();
+            cardModalSaveAction.accept(input);
+        });
+
+        HBox actions = new HBox(10, cancelBtn, saveBtn);
+        actions.setAlignment(Pos.CENTER_RIGHT);
+
+        modalCard.getChildren().addAll(
+                cardModalHeader,
+                titleLabel,
+                cardTitleField,
+                bodyLabel,
+                cardBodyArea,
+                columnLabel,
+                cardColumnBox,
+                actions
+        );
+
+        cardModalOverlay.getChildren().add(modalCard);
+        cardModalOverlay.setAlignment(Pos.CENTER);
+
+        boardLayer.getChildren().setAll(scrollPane, cardModalOverlay);
+        return boardLayer;
     }
 
     private HBox buildFooter() {
@@ -292,6 +367,7 @@ public class KanbanBoardView extends BorderPane {
         VBox cardsBox = new VBox(10);
         cardsBox.getStyleClass().add("cards-box");
         cardsBox.setMinWidth(250);
+        cardsBox.setMinHeight(420);
         cardsBox.setFillWidth(true);
 
         cardsBox.setOnDragOver(event -> {
@@ -318,6 +394,26 @@ public class KanbanBoardView extends BorderPane {
         wrapper.getStyleClass().add("column-pane");
         VBox.setVgrow(cardsBox, Priority.ALWAYS);
 
+        // Accept drop on the whole column so moving cards also works when a column is empty.
+        wrapper.setOnDragOver(event -> {
+            if (event.getGestureSource() != wrapper && event.getDragboard().hasString()) {
+                event.acceptTransferModes(TransferMode.MOVE);
+            }
+            event.consume();
+        });
+
+        wrapper.setOnDragDropped(event -> {
+            Dragboard dragboard = event.getDragboard();
+            boolean completed = false;
+            if (dragboard.hasString()) {
+                String itemId = dragboard.getString();
+                onMoveCard(itemId, column);
+                completed = true;
+            }
+            event.setDropCompleted(completed);
+            event.consume();
+        });
+
         HBox holder = new HBox(wrapper);
         HBox.setHgrow(wrapper, Priority.ALWAYS);
         return cardsBox;
@@ -327,10 +423,12 @@ public class KanbanBoardView extends BorderPane {
         Label title = new Label(card.title());
         title.getStyleClass().add("card-title");
         title.setWrapText(true);
+        title.setMouseTransparent(true);
 
         Label body = new Label(card.body());
         body.getStyleClass().add("card-body");
         body.setWrapText(true);
+        body.setMouseTransparent(true);
 
         ComboBox<KanbanColumn> moveCombo = new ComboBox<>();
         moveCombo.getItems().addAll(KanbanColumn.values());
@@ -551,93 +649,110 @@ public class KanbanBoardView extends BorderPane {
                 showError("Sin proyecto", "Crea o selecciona un proyecto local primero.");
                 return;
             }
-            CardEditorDialog.show("Nueva tarjeta", "", "", KanbanColumn.BACKLOG)
-                    .ifPresent(input -> CompletableFuture.runAsync(() -> {
-                        try {
-                            com.jettrakanban.github.GitHubProjectService.BoardSnapshot snapshot = 
-                                    com.jettrakanban.local.LocalProjectService.loadBoard(activeLocalProject);
-                            List<KanbanCard> cards = new ArrayList<>(snapshot.cards());
-                            String itemId = UUID.randomUUID().toString();
-                            cards.add(new KanbanCard(itemId, itemId, true, input.title(), input.body(), input.column()));
-                            com.jettrakanban.local.LocalProjectService.saveBoard(activeLocalProject, snapshot.projectTitle(), cards);
-                            Platform.runLater(() -> {
-                                setStatus("Tarjeta creada localmente: " + input.title());
-                                refreshBoard();
-                            });
-                        } catch (IOException e) {
-                            Platform.runLater(() -> showError("No se pudo crear la tarjeta", e.getMessage()));
-                        }
-                    }));
+            openCardModal("Nueva tarjeta", "", "", KanbanColumn.BACKLOG, input -> CompletableFuture.runAsync(() -> {
+                try {
+                    com.jettrakanban.github.GitHubProjectService.BoardSnapshot snapshot =
+                            com.jettrakanban.local.LocalProjectService.loadBoard(activeLocalProject);
+                    List<KanbanCard> cards = new ArrayList<>(snapshot.cards());
+                    String itemId = UUID.randomUUID().toString();
+                    cards.add(new KanbanCard(itemId, itemId, true, input.title(), input.body(), input.column()));
+                    com.jettrakanban.local.LocalProjectService.saveBoard(activeLocalProject, snapshot.projectTitle(), cards);
+                    Platform.runLater(() -> {
+                        setStatus("Tarjeta creada localmente: " + input.title());
+                        refreshBoard();
+                    });
+                } catch (IOException e) {
+                    Platform.runLater(() -> showError("No se pudo crear la tarjeta", e.getMessage()));
+                }
+            }));
         } else {
             if (service == null) {
                 showError("Sin conexion", "Conectate primero a un GitHub Project.");
                 return;
             }
 
-            CardEditorDialog.show("Nueva tarjeta", "", "", KanbanColumn.BACKLOG)
-                    .ifPresent(input -> CompletableFuture.runAsync(() -> {
-                        try {
-                            service.createCard(input.title(), input.body(), input.column(), statusFieldId, optionByColumn);
-                            Platform.runLater(() -> {
-                                setStatus("Tarjeta creada: " + input.title());
-                                refreshBoard();
-                            });
-                        } catch (IOException | InterruptedException e) {
-                            Platform.runLater(() -> showError("No se pudo crear", e.getMessage()));
-                        }
-                    }));
+            openCardModal("Nueva tarjeta", "", "", KanbanColumn.BACKLOG, input -> CompletableFuture.runAsync(() -> {
+                try {
+                    service.createCard(input.title(), input.body(), input.column(), statusFieldId, optionByColumn);
+                    Platform.runLater(() -> {
+                        setStatus("Tarjeta creada: " + input.title());
+                        refreshBoard();
+                    });
+                } catch (IOException | InterruptedException e) {
+                    Platform.runLater(() -> showError("No se pudo crear", e.getMessage()));
+                }
+            }));
         }
     }
 
     private void onEditCard(KanbanCard card) {
         if (localMode) {
             if (activeLocalProject == null) return;
-            CardEditorDialog.show("Editar tarjeta", card.title(), card.body(), card.column())
-                    .ifPresent(input -> CompletableFuture.runAsync(() -> {
-                        try {
-                            com.jettrakanban.github.GitHubProjectService.BoardSnapshot snapshot = 
-                                    com.jettrakanban.local.LocalProjectService.loadBoard(activeLocalProject);
-                            List<KanbanCard> cards = snapshot.cards();
-                            for (KanbanCard c : cards) {
-                                if (c.itemId().equals(card.itemId())) {
-                                    c.setTitle(input.title());
-                                    c.setBody(input.body());
-                                    c.setColumn(input.column());
-                                    break;
-                                }
-                            }
-                            com.jettrakanban.local.LocalProjectService.saveBoard(activeLocalProject, snapshot.projectTitle(), cards);
-                            Platform.runLater(() -> {
-                                setStatus("Tarjeta actualizada localmente: " + input.title());
-                                refreshBoard();
-                            });
-                        } catch (IOException e) {
-                            Platform.runLater(() -> showError("No se pudo editar la tarjeta", e.getMessage()));
+            openCardModal("Editar tarjeta", card.title(), card.body(), card.column(), input -> CompletableFuture.runAsync(() -> {
+                try {
+                    com.jettrakanban.github.GitHubProjectService.BoardSnapshot snapshot =
+                            com.jettrakanban.local.LocalProjectService.loadBoard(activeLocalProject);
+                    List<KanbanCard> cards = snapshot.cards();
+                    for (KanbanCard c : cards) {
+                        if (matchesLocalCard(c, card)) {
+                            c.setTitle(input.title());
+                            c.setBody(input.body());
+                            c.setColumn(input.column());
+                            break;
                         }
-                    }));
+                    }
+                    com.jettrakanban.local.LocalProjectService.saveBoard(activeLocalProject, snapshot.projectTitle(), cards);
+                    Platform.runLater(() -> {
+                        setStatus("Tarjeta actualizada localmente: " + input.title());
+                        refreshBoard();
+                    });
+                } catch (IOException e) {
+                    Platform.runLater(() -> showError("No se pudo editar la tarjeta", e.getMessage()));
+                }
+            }));
         } else {
             if (service == null) {
                 return;
             }
 
-            CardEditorDialog.show("Editar tarjeta", card.title(), card.body(), card.column())
-                    .ifPresent(input -> CompletableFuture.runAsync(() -> {
-                        try {
-                            service.updateCard(card, input.title(), input.body());
-                            if (input.column() != card.column()) {
-                                service.moveCard(card.itemId(), input.column(), statusFieldId, optionByColumn);
-                                card.setColumn(input.column());
-                            }
+            openCardModal("Editar tarjeta", card.title(), card.body(), card.column(), input -> CompletableFuture.runAsync(() -> {
+                try {
+                    service.updateCard(card, input.title(), input.body());
+                    if (input.column() != card.column()) {
+                        service.moveCard(card.itemId(), input.column(), statusFieldId, optionByColumn);
+                        card.setColumn(input.column());
+                    }
 
-                            Platform.runLater(() -> {
-                                setStatus("Tarjeta actualizada: " + input.title());
-                                refreshBoard();
-                            });
-                        } catch (IOException | InterruptedException e) {
-                            Platform.runLater(() -> showError("No se pudo editar", e.getMessage()));
-                        }
-                    }));
+                    Platform.runLater(() -> {
+                        setStatus("Tarjeta actualizada: " + input.title());
+                        refreshBoard();
+                    });
+                } catch (IOException | InterruptedException e) {
+                    Platform.runLater(() -> showError("No se pudo editar", e.getMessage()));
+                }
+            }));
         }
+    }
+
+    private void openCardModal(String header,
+                               String initialTitle,
+                               String initialBody,
+                               KanbanColumn initialColumn,
+                               Consumer<CardInput> onSave) {
+        cardModalHeader.setText(header);
+        cardTitleField.setText(initialTitle == null ? "" : initialTitle);
+        cardBodyArea.setText(initialBody == null ? "" : initialBody);
+        cardColumnBox.setValue(initialColumn == null ? KanbanColumn.BACKLOG : initialColumn);
+        cardModalSaveAction = onSave;
+        cardModalOverlay.setManaged(true);
+        cardModalOverlay.setVisible(true);
+        Platform.runLater(cardTitleField::requestFocus);
+    }
+
+    private void hideCardModal() {
+        cardModalSaveAction = null;
+        cardModalOverlay.setVisible(false);
+        cardModalOverlay.setManaged(false);
     }
 
     private void onMoveCard(String itemId, KanbanColumn targetColumn) {
@@ -654,7 +769,7 @@ public class KanbanBoardView extends BorderPane {
                             com.jettrakanban.local.LocalProjectService.loadBoard(activeLocalProject);
                     List<KanbanCard> cards = snapshot.cards();
                     for (KanbanCard c : cards) {
-                        if (c.itemId().equals(itemId)) {
+                        if (matchesLocalCard(c, card)) {
                             c.setColumn(targetColumn);
                             break;
                         }
@@ -692,6 +807,15 @@ public class KanbanBoardView extends BorderPane {
         statusLabel.setText(text);
     }
 
+    private boolean matchesLocalCard(KanbanCard loadedCard, KanbanCard referenceCard) {
+        if (loadedCard.itemId().equals(referenceCard.itemId())) {
+            return true;
+        }
+        return Objects.equals(loadedCard.title(), referenceCard.title())
+                && Objects.equals(loadedCard.body(), referenceCard.body())
+                && loadedCard.column() == referenceCard.column();
+    }
+
     private void showError(String title, String content) {
         Alert alert = new Alert(Alert.AlertType.ERROR);
         alert.setTitle("JettraKanban");
@@ -701,5 +825,8 @@ public class KanbanBoardView extends BorderPane {
     }
 
     private record ProjectLocator(String ownerLogin, int projectNumber) {
+    }
+
+    private record CardInput(String title, String body, KanbanColumn column) {
     }
 }
