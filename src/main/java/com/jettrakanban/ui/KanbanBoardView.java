@@ -31,6 +31,8 @@ import javafx.scene.layout.VBox;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
@@ -78,6 +80,7 @@ public class KanbanBoardView extends BorderPane {
 
     private final StackPane cardModalOverlay = new StackPane();
     private final Label cardModalHeader = new Label();
+    private final Label cardMetaLabel = new Label();
     private final TextField cardTitleField = new TextField();
     private final TextArea cardBodyArea = new TextArea();
     private final ComboBox<KanbanColumn> cardColumnBox = new ComboBox<>();
@@ -299,6 +302,10 @@ public class KanbanBoardView extends BorderPane {
 
         cardModalHeader.getStyleClass().add("card-modal-title");
 
+        cardMetaLabel.getStyleClass().add("card-meta");
+        cardMetaLabel.setVisible(false);
+        cardMetaLabel.setManaged(false);
+
         cardTitleField.setPromptText("Titulo de la tarjeta");
         cardBodyArea.setPromptText("Descripcion / acceptance criteria");
         cardBodyArea.setPrefRowCount(6);
@@ -338,6 +345,7 @@ public class KanbanBoardView extends BorderPane {
 
         modalCard.getChildren().addAll(
                 cardModalHeader,
+                cardMetaLabel,
                 titleLabel,
                 cardTitleField,
                 bodyLabel,
@@ -450,6 +458,18 @@ public class KanbanBoardView extends BorderPane {
         controls.setAlignment(Pos.CENTER_LEFT);
 
         VBox cardPane = new VBox(8, title, body, controls);
+        if (card.createdBy() != null || card.createdAt() != null) {
+            StringBuilder metaText = new StringBuilder();
+            if (card.createdBy() != null) metaText.append(card.createdBy());
+            if (card.createdAt() != null) {
+                if (metaText.length() > 0) metaText.append(" · ");
+                metaText.append(card.createdAtFormatted());
+            }
+            Label metaLabel = new Label(metaText.toString());
+            metaLabel.getStyleClass().add("card-meta");
+            metaLabel.setMouseTransparent(true);
+            cardPane.getChildren().add(metaLabel);
+        }
         cardPane.getStyleClass().add("card-pane");
         cardPane.setPadding(new Insets(10));
 
@@ -650,13 +670,14 @@ public class KanbanBoardView extends BorderPane {
                 showError("Sin proyecto", "Crea o selecciona un proyecto local primero.");
                 return;
             }
-            openCardModal("Nueva tarjeta", "", "", KanbanColumn.BACKLOG, input -> CompletableFuture.runAsync(() -> {
+            String currentUser = resolveCurrentUser();
+            openCardModal("Nueva tarjeta", "", "", KanbanColumn.BACKLOG, null, null, input -> CompletableFuture.runAsync(() -> {
                 try {
                     com.jettrakanban.github.GitHubProjectService.BoardSnapshot snapshot =
                             com.jettrakanban.local.LocalProjectService.loadBoard(activeLocalProject);
                     List<KanbanCard> cards = new ArrayList<>(snapshot.cards());
                     String itemId = UUID.randomUUID().toString();
-                    cards.add(new KanbanCard(itemId, itemId, true, input.title(), input.body(), input.column()));
+                    cards.add(new KanbanCard(itemId, itemId, true, input.title(), input.body(), input.column(), currentUser, LocalDateTime.now()));
                     com.jettrakanban.local.LocalProjectService.saveBoard(activeLocalProject, snapshot.projectTitle(), cards);
                     Platform.runLater(() -> {
                         setStatus("Tarjeta creada localmente: " + input.title());
@@ -672,7 +693,7 @@ public class KanbanBoardView extends BorderPane {
                 return;
             }
 
-            openCardModal("Nueva tarjeta", "", "", KanbanColumn.BACKLOG, input -> CompletableFuture.runAsync(() -> {
+            openCardModal("Nueva tarjeta", "", "", KanbanColumn.BACKLOG, null, null, input -> CompletableFuture.runAsync(() -> {
                 try {
                     service.createCard(input.title(), input.body(), input.column(), statusFieldId, optionByColumn);
                     Platform.runLater(() -> {
@@ -689,7 +710,7 @@ public class KanbanBoardView extends BorderPane {
     private void onEditCard(KanbanCard card) {
         if (localMode) {
             if (activeLocalProject == null) return;
-            openCardModal("Editar tarjeta", card.title(), card.body(), card.column(), input -> CompletableFuture.runAsync(() -> {
+            openCardModal("Editar tarjeta", card.title(), card.body(), card.column(), card.createdBy(), card.createdAt(), input -> CompletableFuture.runAsync(() -> {
                 try {
                     com.jettrakanban.github.GitHubProjectService.BoardSnapshot snapshot =
                             com.jettrakanban.local.LocalProjectService.loadBoard(activeLocalProject);
@@ -716,7 +737,7 @@ public class KanbanBoardView extends BorderPane {
                 return;
             }
 
-            openCardModal("Editar tarjeta", card.title(), card.body(), card.column(), input -> CompletableFuture.runAsync(() -> {
+            openCardModal("Editar tarjeta", card.title(), card.body(), card.column(), card.createdBy(), card.createdAt(), input -> CompletableFuture.runAsync(() -> {
                 try {
                     service.updateCard(card, input.title(), input.body());
                     if (input.column() != card.column()) {
@@ -739,11 +760,25 @@ public class KanbanBoardView extends BorderPane {
                                String initialTitle,
                                String initialBody,
                                KanbanColumn initialColumn,
+                               String createdBy,
+                               LocalDateTime createdAt,
                                Consumer<CardInput> onSave) {
         cardModalHeader.setText(header);
         cardTitleField.setText(initialTitle == null ? "" : initialTitle);
         cardBodyArea.setText(initialBody == null ? "" : initialBody);
         cardColumnBox.setValue(initialColumn == null ? KanbanColumn.BACKLOG : initialColumn);
+        if (createdBy != null || createdAt != null) {
+            String by = createdBy != null ? createdBy : "—";
+            String at = createdAt != null
+                    ? createdAt.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) : "—";
+            cardMetaLabel.setText("Creado por: " + by + "  ·  " + at);
+            cardMetaLabel.setVisible(true);
+            cardMetaLabel.setManaged(true);
+        } else {
+            cardMetaLabel.setText("");
+            cardMetaLabel.setVisible(false);
+            cardMetaLabel.setManaged(false);
+        }
         cardModalSaveAction = onSave;
         cardModalOverlay.setManaged(true);
         cardModalOverlay.setVisible(true);
@@ -826,6 +861,12 @@ public class KanbanBoardView extends BorderPane {
     }
 
     private record ProjectLocator(String ownerLogin, int projectNumber) {
+    }
+
+    private String resolveCurrentUser() {
+        String username = usernameField.getText().trim();
+        if (!username.isBlank()) return username;
+        return System.getProperty("user.name", "unknown");
     }
 
     private record CardInput(String title, String body, KanbanColumn column) {

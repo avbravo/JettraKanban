@@ -1,20 +1,33 @@
 package com.jettrakanban.model;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+
 public class KanbanCard {
+    private static final DateTimeFormatter DISPLAY_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+
     private final String itemId;
     private final String contentId;
     private final boolean draftIssue;
     private String title;
     private String body;
     private KanbanColumn column;
+    private String createdBy;
+    private LocalDateTime createdAt;
 
     public KanbanCard(String itemId, String contentId, boolean draftIssue, String title, String body, KanbanColumn column) {
+        this(itemId, contentId, draftIssue, title, body, column, null, null);
+    }
+
+    public KanbanCard(String itemId, String contentId, boolean draftIssue, String title, String body, KanbanColumn column, String createdBy, LocalDateTime createdAt) {
         this.itemId = itemId;
         this.contentId = contentId;
         this.draftIssue = draftIssue;
         this.title = title;
         this.body = body;
         this.column = column;
+        this.createdBy = createdBy;
+        this.createdAt = createdAt;
     }
 
     public String itemId() {
@@ -51,5 +64,26 @@ public class KanbanCard {
 
     public void setColumn(KanbanColumn column) {
         this.column = column;
+    }
+
+    public String createdBy() {
+        return createdBy;
+    }
+
+    public void setCreatedBy(String createdBy) {
+        this.createdBy = createdBy;
+    }
+
+    public LocalDateTime createdAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public String createdAtFormatted() {
+        if (createdAt == null) return "";
+        return createdAt.format(DISPLAY_FMT);
     }
 }
