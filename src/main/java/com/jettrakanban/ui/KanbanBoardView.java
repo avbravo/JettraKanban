@@ -2,7 +2,9 @@ package com.jettrakanban.ui;
 
 import com.jettrakanban.config.AppConfig;
 import com.jettrakanban.github.GitHubProjectService;
+import com.jettrakanban.export.PdfExportService;
 import com.jettrakanban.local.LocalProjectService;
+import com.jettrakanban.local.LocalTrashService;
 import com.jettrakanban.model.KanbanCard;
 import com.jettrakanban.model.KanbanColumn;
 import javafx.application.Platform;
@@ -13,12 +15,17 @@ import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.control.ScrollPane.ScrollBarPolicy;
+import javafx.scene.control.ListCell;
+import javafx.scene.control.ListView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.control.Tooltip;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.Dragboard;
 import javafx.scene.input.TransferMode;
@@ -28,6 +35,8 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.stage.FileChooser;
+import javafx.stage.Window;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -68,8 +77,12 @@ public class KanbanBoardView extends BorderPane {
     // Local storage fields
     private final Label localProjectLabel = new Label("Proyecto:");
     private final ComboBox<String> localProjectComboBox = new ComboBox<>();
-    private final Button loadLocalBtn = new Button("Cargar");
-    private final Button newLocalBtn = new Button("Nuevo Proyecto");
+    private final Button loadLocalBtn = new Button("↺");
+    private final Button newLocalBtn = new Button("＋");
+    private final Button editLocalBtn = new Button("✎");
+    private final Button deleteLocalBtn = new Button("🗑");
+    private final Button trashBtn = new Button("♻");
+    private final Button exportPdfBtn = new Button("📄");
 
     private final Label projectTitleLabel = new Label("JettraKanban - Offline");
     private final Label statusLabel = new Label("Ingresa URL de proyecto + credenciales para sincronizar.");
@@ -87,14 +100,16 @@ public class KanbanBoardView extends BorderPane {
     private Consumer<CardInput> cardModalSaveAction;
 
     // Common buttons promoted to instance variables
-    private final Button connectBtn = new Button("Conectar");
-    private final Button forgetBtn = new Button("Olvidar credenciales");
-    private final Button refreshBtn = new Button("Sincronizar");
-    private final Button newCardBtn = new Button("+ Nueva Tarjeta");
+    private final Button connectBtn = new Button("🔗");
+    private final Button forgetBtn = new Button("🧼");
+    private final Button refreshBtn = new Button("⟳");
+    private final Button newCardBtn = new Button("＋");
 
     private GitHubProjectService service;
     private String statusFieldId = "";
     private Map<KanbanColumn, String> optionByColumn = new EnumMap<>(KanbanColumn.class);
+    private String currentProjectTitle = "JettraKanban - Offline";
+    private List<KanbanCard> currentCardsSnapshot = new ArrayList<>();
 
     private boolean localMode = false;
     private String activeLocalProject = null;
@@ -111,11 +126,12 @@ public class KanbanBoardView extends BorderPane {
         setTop(buildTopBar());
         setCenter(buildBoard());
         setBottom(buildFooter());
+        updateModeVisibility();
     }
 
     private HBox buildTopBar() {
         modeComboBox.getItems().addAll("Modo: GitHub", "Modo: Local");
-        modeComboBox.setValue("Modo: GitHub");
+        modeComboBox.setValue("Modo: Local");
         modeComboBox.setOnAction(event -> updateModeVisibility());
 
         projectUrlField.setPromptText("URL del GitHub Project (ej: https://github.com/users/usuario/projects/1)");
@@ -128,15 +144,35 @@ public class KanbanBoardView extends BorderPane {
         connectBtn.setOnAction(event -> connectAndRefresh());
         forgetBtn.setOnAction(event -> forgetCredentials());
         refreshBtn.setOnAction(event -> refreshBoard());
+        iconButton(connectBtn, "Conectar y cargar el tablero");
+        iconButton(forgetBtn, "Olvidar credenciales guardadas");
+        iconButton(refreshBtn, "Recargar tablero");
 
         newCardBtn.getStyleClass().add("cta-btn");
         newCardBtn.setOnAction(event -> onCreateCard());
+        iconButton(newCardBtn, "Nueva tarjeta");
+        exportPdfBtn.setOnAction(event -> onExportCardsPdf());
+        iconButton(exportPdfBtn, "Exportar tarjetas a PDF");
+        trashBtn.setOnAction(event -> onOpenTrash());
+        iconButton(trashBtn, "Abrir papelera");
 
         // Configure Local Storage controls
         localProjectComboBox.setMinWidth(180);
         localProjectComboBox.setPromptText("Selecciona proyecto");
+        localProjectComboBox.setOnAction(event -> {
+            String selectedProject = localProjectComboBox.getValue();
+            if (localMode && selectedProject != null && !selectedProject.isBlank() && !selectedProject.equals(activeLocalProject)) {
+                loadLocalProject(selectedProject);
+            }
+        });
         loadLocalBtn.setOnAction(event -> loadLocalProject(localProjectComboBox.getValue()));
         newLocalBtn.setOnAction(event -> onCreateLocalProject());
+        editLocalBtn.setOnAction(event -> onEditLocalProject());
+        deleteLocalBtn.setOnAction(event -> onDeleteLocalProject());
+        iconButton(loadLocalBtn, "Cargar proyecto local");
+        iconButton(newLocalBtn, "Nuevo proyecto local");
+        iconButton(editLocalBtn, "Editar proyecto local");
+        iconButton(deleteLocalBtn, "Enviar proyecto a la papelera");
 
         // Hide local controls by default
         localProjectLabel.setVisible(false);
@@ -147,12 +183,21 @@ public class KanbanBoardView extends BorderPane {
         loadLocalBtn.setManaged(false);
         newLocalBtn.setVisible(false);
         newLocalBtn.setManaged(false);
+        editLocalBtn.setVisible(false);
+        editLocalBtn.setManaged(false);
+        deleteLocalBtn.setVisible(false);
+        deleteLocalBtn.setManaged(false);
+        trashBtn.setVisible(false);
+        trashBtn.setManaged(false);
+        exportPdfBtn.setVisible(false);
+        exportPdfBtn.setManaged(false);
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
         HBox topBar = new HBox(12,
                 projectTitleLabel,
+            newCardBtn,
                 modeComboBox,
                 spacer,
                 projectUrlField,
@@ -166,8 +211,11 @@ public class KanbanBoardView extends BorderPane {
                 localProjectComboBox,
                 loadLocalBtn,
                 newLocalBtn,
-                refreshBtn,
-                newCardBtn
+                editLocalBtn,
+                deleteLocalBtn,
+                trashBtn,
+                exportPdfBtn,
+                refreshBtn
         );
         topBar.setPadding(new Insets(14));
         topBar.setAlignment(Pos.CENTER_LEFT);
@@ -204,38 +252,37 @@ public class KanbanBoardView extends BorderPane {
         loadLocalBtn.setManaged(isLocal);
         newLocalBtn.setVisible(isLocal);
         newLocalBtn.setManaged(isLocal);
+        editLocalBtn.setVisible(isLocal);
+        editLocalBtn.setManaged(isLocal);
+        deleteLocalBtn.setVisible(isLocal);
+        deleteLocalBtn.setManaged(isLocal);
+        trashBtn.setVisible(isLocal);
+        trashBtn.setManaged(isLocal);
+        exportPdfBtn.setVisible(true);
+        exportPdfBtn.setManaged(true);
 
-        // Update refresh button text
-        refreshBtn.setText(isLocal ? "Recargar" : "Sincronizar");
+        // Keep icon-only button and adjust action hint by mode.
+        refreshBtn.setTooltip(new Tooltip(isLocal ? "Recargar tablero local" : "Sincronizar con GitHub"));
 
         if (isLocal) {
             refreshLocalProjectsList();
             if (activeLocalProject != null) {
                 localProjectComboBox.setValue(activeLocalProject);
             } else if (!localProjectComboBox.getItems().isEmpty()) {
-                localProjectComboBox.setValue(localProjectComboBox.getItems().get(0));
+                String firstProject = localProjectComboBox.getItems().get(0);
+                localProjectComboBox.setValue(firstProject);
             }
         }
     }
 
     private void refreshLocalProjectsList() {
-        List<String> projects = new java.util.ArrayList<>();
         try {
-            java.io.File dir = new java.io.File(".");
-            java.io.File[] files = dir.listFiles((d, name) -> name.endsWith(".md"));
-            if (files != null) {
-                for (java.io.File file : files) {
-                    String name = file.getName();
-                    if (!name.equalsIgnoreCase("README.md") && 
-                        !name.equalsIgnoreCase("credentials.md") && 
-                        !name.equalsIgnoreCase("plan.md")) {
-                        projects.add(name.substring(0, name.length() - 3));
-                    }
-                }
-            }
-        } catch (Exception ignored) {
+            List<String> projects = LocalProjectService.listProjectNames();
+            localProjectComboBox.getItems().setAll(projects);
+        } catch (IOException ex) {
+            localProjectComboBox.getItems().clear();
+            setStatus("No se pudo cargar la lista de proyectos locales: " + ex.getMessage());
         }
-        localProjectComboBox.getItems().setAll(projects);
     }
 
     private void onCreateLocalProject() {
@@ -248,7 +295,12 @@ public class KanbanBoardView extends BorderPane {
             name = name.trim();
             if (name.isEmpty()) return;
 
-            String safeName = name.replaceAll("[\\\\/:*?\"<>|]", "_");
+            String safeName = sanitizeProjectName(name);
+            if (safeName.isBlank()) {
+                showError("Nombre invalido", "El nombre del proyecto no puede quedar vacio.");
+                return;
+            }
+
             java.nio.file.Path path = java.nio.file.Path.of(safeName + ".md");
             if (java.nio.file.Files.exists(path)) {
                 showError("Proyecto existente", "Ya existe un proyecto con ese nombre.");
@@ -266,6 +318,81 @@ public class KanbanBoardView extends BorderPane {
         });
     }
 
+    private void onEditLocalProject() {
+        if (activeLocalProject == null || activeLocalProject.isBlank()) {
+            showError("Sin proyecto", "Selecciona un proyecto local para editarlo.");
+            return;
+        }
+
+        try {
+            GitHubProjectService.BoardSnapshot snapshot = LocalProjectService.loadBoard(activeLocalProject);
+            javafx.scene.control.TextInputDialog dialog = new javafx.scene.control.TextInputDialog(snapshot.projectTitle());
+            dialog.setTitle("Editar Proyecto");
+            dialog.setHeaderText("Renombrar proyecto local");
+            dialog.setContentText("Nuevo nombre del proyecto:");
+
+            dialog.showAndWait().ifPresent(name -> {
+                String trimmed = name == null ? "" : name.trim();
+                if (trimmed.isBlank()) {
+                    showError("Nombre invalido", "El nombre del proyecto no puede quedar vacio.");
+                    return;
+                }
+
+                String safeName = sanitizeProjectName(trimmed);
+                try {
+                    LocalProjectService.renameProject(activeLocalProject, safeName, trimmed);
+                    activeLocalProject = safeName;
+                    refreshLocalProjectsList();
+                    localProjectComboBox.setValue(safeName);
+                    loadLocalProject(safeName);
+                    setStatus("Proyecto actualizado: " + trimmed);
+                } catch (IOException ex) {
+                    showError("Error al editar proyecto", ex.getMessage());
+                }
+            });
+        } catch (IOException ex) {
+            showError("Error al editar proyecto", ex.getMessage());
+        }
+    }
+
+    private void onDeleteLocalProject() {
+        if (activeLocalProject == null || activeLocalProject.isBlank()) {
+            showError("Sin proyecto", "Selecciona un proyecto local para eliminarlo.");
+            return;
+        }
+
+        Alert confirm = new Alert(AlertType.CONFIRMATION);
+        confirm.setTitle("JettraKanban");
+        confirm.setHeaderText("Eliminar proyecto local");
+        try {
+            GitHubProjectService.BoardSnapshot snapshot = LocalProjectService.loadBoard(activeLocalProject);
+            confirm.setContentText("Se enviara a la papelera el proyecto \"" + snapshot.projectTitle() + "\" (archivo " + activeLocalProject + ".md). Quieres continuar?");
+        } catch (IOException ex) {
+            confirm.setContentText("Se enviara a la papelera el proyecto \"" + activeLocalProject + "\". Quieres continuar?");
+        }
+
+        if (confirm.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) {
+            return;
+        }
+
+        try {
+            LocalTrashService.trashProject(activeLocalProject);
+            String deletedProject = activeLocalProject;
+            activeLocalProject = null;
+            refreshLocalProjectsList();
+
+            if (!localProjectComboBox.getItems().isEmpty()) {
+                String nextProject = localProjectComboBox.getItems().get(0);
+                localProjectComboBox.setValue(nextProject);
+                loadLocalProject(nextProject);
+            } else {
+                clearLocalBoard("Proyecto eliminado: " + deletedProject);
+            }
+        } catch (IOException ex) {
+            showError("Error al eliminar proyecto", ex.getMessage());
+        }
+    }
+
     private void loadLocalProject(String projectName) {
         if (projectName == null || projectName.isBlank()) {
             showError("Sin proyecto", "Selecciona o escribe un nombre de proyecto.");
@@ -273,6 +400,17 @@ public class KanbanBoardView extends BorderPane {
         }
         activeLocalProject = projectName;
         refreshBoard();
+    }
+
+    private void clearLocalBoard(String statusText) {
+        cardsByItemId.clear();
+        currentCardsSnapshot = new ArrayList<>();
+        currentProjectTitle = "JettraKanban - Offline";
+        for (VBox pane : columnPanes.values()) {
+            pane.getChildren().clear();
+        }
+        projectTitleLabel.setText("JettraKanban - Offline");
+        setStatus(statusText);
     }
 
     private StackPane buildBoard() {
@@ -287,8 +425,12 @@ public class KanbanBoardView extends BorderPane {
         }
 
         ScrollPane scrollPane = new ScrollPane(columns);
-        scrollPane.setFitToHeight(true);
+        // Keep content free to grow vertically so the board can scroll down with many cards.
+        scrollPane.setFitToHeight(false);
         scrollPane.setFitToWidth(true);
+        scrollPane.setHbarPolicy(ScrollBarPolicy.AS_NEEDED);
+        scrollPane.setVbarPolicy(ScrollBarPolicy.AS_NEEDED);
+        scrollPane.setPannable(true);
         scrollPane.getStyleClass().add("board-scroll");
 
         cardModalOverlay.getStyleClass().add("card-modal-overlay");
@@ -322,6 +464,8 @@ public class KanbanBoardView extends BorderPane {
         Button cancelBtn = new Button("Cancelar");
         cancelBtn.getStyleClass().add("subtle-btn");
         cancelBtn.setOnAction(event -> hideCardModal());
+        cancelBtn.setText("✕");
+        iconButton(cancelBtn, "Cerrar sin guardar");
 
         Button saveBtn = new Button("Guardar");
         saveBtn.disableProperty().bind(cardTitleField.textProperty().isEmpty());
@@ -339,6 +483,8 @@ public class KanbanBoardView extends BorderPane {
             hideCardModal();
             action.accept(input);
         });
+        saveBtn.setText("✔");
+        iconButton(saveBtn, "Guardar tarjeta");
 
         HBox actions = new HBox(10, cancelBtn, saveBtn);
         actions.setAlignment(Pos.CENTER_RIGHT);
@@ -451,10 +597,15 @@ public class KanbanBoardView extends BorderPane {
             }
         });
 
-        Button editBtn = new Button("Editar");
+        Button editBtn = new Button("✎");
         editBtn.setOnAction(event -> onEditCard(card));
+        iconButton(editBtn, "Editar tarjeta");
 
-        HBox controls = new HBox(8, moveCombo, editBtn);
+        Button deleteBtn = new Button("🗑");
+        deleteBtn.setOnAction(event -> onDeleteCard(card));
+        iconButton(deleteBtn, "Enviar tarjeta a la papelera");
+
+        HBox controls = new HBox(8, moveCombo, editBtn, deleteBtn);
         controls.setAlignment(Pos.CENTER_LEFT);
 
         VBox cardPane = new VBox(8, title, body, controls);
@@ -601,6 +752,8 @@ public class KanbanBoardView extends BorderPane {
                         }
                     })
                     .thenAccept(snapshot -> Platform.runLater(() -> {
+                        currentProjectTitle = snapshot.projectTitle();
+                        currentCardsSnapshot = new ArrayList<>(snapshot.cards());
                         projectTitleLabel.setText("JettraKanban | [Local] " + snapshot.projectTitle());
                         statusFieldId = "";
                         optionByColumn.clear();
@@ -632,6 +785,8 @@ public class KanbanBoardView extends BorderPane {
                         }
                     })
                     .thenAccept(snapshot -> Platform.runLater(() -> {
+                        currentProjectTitle = snapshot.projectTitle();
+                        currentCardsSnapshot = new ArrayList<>(snapshot.cards());
                         projectTitleLabel.setText("JettraKanban | " + snapshot.projectTitle());
                         statusFieldId = snapshot.statusFieldId();
                         optionByColumn = new EnumMap<>(snapshot.statusOptionByColumn());
@@ -650,6 +805,7 @@ public class KanbanBoardView extends BorderPane {
     }
 
     private void renderCards(List<KanbanCard> cards) {
+        currentCardsSnapshot = new ArrayList<>(cards);
         cardsByItemId.clear();
         for (VBox pane : columnPanes.values()) {
             pane.getChildren().clear();
@@ -704,6 +860,41 @@ public class KanbanBoardView extends BorderPane {
                     Platform.runLater(() -> showError("No se pudo crear", e.getMessage()));
                 }
             }));
+        }
+    }
+
+    private void onDeleteCard(KanbanCard card) {
+        if (card == null) {
+            return;
+        }
+
+        if (localMode) {
+            if (activeLocalProject == null || activeLocalProject.isBlank()) {
+                showError("Sin proyecto", "Selecciona un proyecto local primero.");
+                return;
+            }
+
+            Alert confirm = new Alert(AlertType.CONFIRMATION);
+            confirm.setTitle("JettraKanban");
+            confirm.setHeaderText("Enviar tarjeta a la papelera");
+            confirm.setContentText("Se movera la tarjeta \"" + card.title() + "\" del proyecto \"" + currentProjectTitle + "\" a la papelera. Quieres continuar?");
+            if (confirm.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) {
+                return;
+            }
+
+            CompletableFuture.runAsync(() -> {
+                try {
+                    LocalTrashService.trashCard(activeLocalProject, card);
+                    Platform.runLater(() -> {
+                        setStatus("Tarjeta enviada a la papelera: " + card.title());
+                        refreshBoard();
+                    });
+                } catch (IOException ex) {
+                    Platform.runLater(() -> showError("No se pudo eliminar la tarjeta", ex.getMessage()));
+                }
+            });
+        } else {
+            showError("No soportado", "Eliminar tarjetas de GitHub todavía no esta implementado.");
         }
     }
 
@@ -843,6 +1034,129 @@ public class KanbanBoardView extends BorderPane {
         statusLabel.setText(text);
     }
 
+    private void onExportCardsPdf() {
+        List<KanbanCard> cards = new ArrayList<>(currentCardsSnapshot);
+        if (cards.isEmpty()) {
+            showError("Sin tarjetas", "No hay tarjetas para exportar.");
+            return;
+        }
+
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("Exportar tarjetas a PDF");
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF", "*.pdf"));
+        String suggested = sanitizePdfFileName(currentProjectTitle) + "-tarjetas.pdf";
+        chooser.setInitialFileName(suggested);
+
+        Window window = getScene() == null ? null : getScene().getWindow();
+        java.io.File selected = chooser.showSaveDialog(window);
+        if (selected == null) {
+            return;
+        }
+
+        CompletableFuture.runAsync(() -> {
+            try {
+                PdfExportService.exportBoard(selected.toPath(), currentProjectTitle, cards);
+                Platform.runLater(() -> setStatus("PDF exportado: " + selected.getName()));
+            } catch (IOException ex) {
+                Platform.runLater(() -> showError("No se pudo exportar el PDF", ex.getMessage()));
+            }
+        });
+    }
+
+    private void onOpenTrash() {
+        if (!localMode) {
+            showError("Modo no soportado", "La papelera esta disponible en modo local.");
+            return;
+        }
+
+        try {
+            List<LocalTrashService.TrashEntry> entries = LocalTrashService.listTrashEntries();
+            Dialog<Void> dialog = new Dialog<>();
+            dialog.setTitle("JettraKanban");
+            dialog.setHeaderText("Papelera de reciclaje");
+
+            ListView<LocalTrashService.TrashEntry> listView = new ListView<>();
+            listView.getItems().setAll(entries);
+            listView.setCellFactory(view -> new ListCell<>() {
+                @Override
+                protected void updateItem(LocalTrashService.TrashEntry item, boolean empty) {
+                    super.updateItem(item, empty);
+                    setText(empty || item == null ? null : item.label());
+                }
+            });
+
+            Label info = new Label("Restaurar recupera la tarjeta o proyecto. Eliminar permanente borra la entrada de la papelera.");
+            info.setWrapText(true);
+
+            Button restoreBtn = new Button("↺");
+            Button deleteBtn = new Button("🗑");
+            Button refreshTrashBtn = new Button("⟳");
+            iconButton(restoreBtn, "Restaurar elemento seleccionado");
+            iconButton(deleteBtn, "Eliminar permanentemente de la papelera");
+            iconButton(refreshTrashBtn, "Actualizar papelera");
+
+            Runnable reloadTrash = () -> {
+                try {
+                    listView.getItems().setAll(LocalTrashService.listTrashEntries());
+                } catch (IOException ex) {
+                    showError("No se pudo cargar la papelera", ex.getMessage());
+                }
+            };
+
+            restoreBtn.setOnAction(event -> {
+                LocalTrashService.TrashEntry selected = listView.getSelectionModel().getSelectedItem();
+                if (selected == null) {
+                    return;
+                }
+                try {
+                    LocalTrashService.restoreTrashEntry(selected);
+                    reloadTrash.run();
+                    refreshLocalProjectsList();
+                    refreshBoard();
+                    setStatus("Elemento restaurado desde la papelera: " + selected.displayName());
+                } catch (IOException ex) {
+                    showError("No se pudo restaurar", ex.getMessage());
+                }
+            });
+
+            deleteBtn.setOnAction(event -> {
+                LocalTrashService.TrashEntry selected = listView.getSelectionModel().getSelectedItem();
+                if (selected == null) {
+                    return;
+                }
+
+                Alert confirm = new Alert(AlertType.CONFIRMATION);
+                confirm.setTitle("JettraKanban");
+                confirm.setHeaderText("Eliminar permanentemente");
+                confirm.setContentText("Se borrara definitivamente \"" + selected.label() + "\" de la papelera. Quieres continuar?");
+                if (confirm.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) {
+                    return;
+                }
+
+                try {
+                    LocalTrashService.deleteTrashEntry(selected);
+                    reloadTrash.run();
+                    setStatus("Entrada eliminada permanentemente: " + selected.displayName());
+                } catch (IOException ex) {
+                    showError("No se pudo eliminar", ex.getMessage());
+                }
+            });
+
+            refreshTrashBtn.setOnAction(event -> reloadTrash.run());
+
+            HBox actions = new HBox(10, restoreBtn, deleteBtn, refreshTrashBtn);
+            actions.setAlignment(Pos.CENTER_RIGHT);
+
+            VBox content = new VBox(12, info, listView, actions);
+            content.setPrefSize(720, 420);
+            dialog.getDialogPane().setContent(content);
+            dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+            dialog.showAndWait();
+        } catch (IOException ex) {
+            showError("No se pudo abrir la papelera", ex.getMessage());
+        }
+    }
+
     private boolean matchesLocalCard(KanbanCard loadedCard, KanbanCard referenceCard) {
         if (loadedCard.itemId().equals(referenceCard.itemId())) {
             return true;
@@ -860,6 +1174,20 @@ public class KanbanBoardView extends BorderPane {
         alert.showAndWait();
     }
 
+    private void iconButton(Button button, String tooltipText) {
+        button.setMinWidth(34);
+        button.setPrefWidth(34);
+        button.setMaxWidth(34);
+        button.setTooltip(new Tooltip(tooltipText));
+    }
+
+    private String sanitizePdfFileName(String value) {
+        if (value == null || value.isBlank()) {
+            return "JettraKanban";
+        }
+        return value.trim().replaceAll("[\\\\/:*?\"<>|]+", "_");
+    }
+
     private record ProjectLocator(String ownerLogin, int projectNumber) {
     }
 
@@ -867,6 +1195,10 @@ public class KanbanBoardView extends BorderPane {
         String username = usernameField.getText().trim();
         if (!username.isBlank()) return username;
         return System.getProperty("user.name", "unknown");
+    }
+
+    private String sanitizeProjectName(String name) {
+        return name == null ? "" : name.trim().replaceAll("[\\\\/:*?\"<>|]", "_");
     }
 
     private record CardInput(String title, String body, KanbanColumn column) {

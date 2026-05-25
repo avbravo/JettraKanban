@@ -9,6 +9,8 @@ JettraKanban es un cliente JavaFX con estilo futurista para gestionar un tablero
 - Crea tarjetas nuevas como Draft Issues dentro del Project.
 - Edita tarjetas (titulo y descripcion).
 - Mueve tarjetas entre columnas (drag and drop o selector de columna).
+- Exporta el tablero actual a PDF.
+- Permite eliminar tarjetas y proyectos locales enviandolos a una papelera de reciclaje.
 - Mapeo automatico de columnas Kanban con el campo `Status` del Project.
 - Puede guardar username, password y token cifrados en `credentials.md` si activas el boton `Recordar credenciales`.
 - Incluye el boton `Olvidar credenciales` para borrar `credentials.md` y limpiar los campos guardados, con confirmacion previa.
@@ -55,6 +57,7 @@ mvn clean javafx:run
 3. Activa `Recordar credenciales` si quieres persistirlas cifradas en `credentials.md`.
 4. Pulsa **Conectar**.
 5. El tablero queda sincronizado con el proyecto indicado en la URL.
+6. En modo local puedes abrir la papelera, restaurar elementos eliminados o exportar el tablero a PDF.
 
 Si quieres borrar lo almacenado, pulsa `Olvidar credenciales`.
 

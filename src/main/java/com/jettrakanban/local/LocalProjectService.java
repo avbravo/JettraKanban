@@ -19,11 +19,25 @@ import java.util.regex.Pattern;
 
 public class LocalProjectService {
 
+    private static final String[] EXCLUDED_PROJECT_FILES = {"README.md", "credentials.md", "plan.md", "config.properties"};
+
     private static final Pattern META_PATTERN = Pattern.compile(
             "<!--\\s*jettra-meta\\s+created-by=\"([^\"]*)\"\\s+created-at=\"([^\"]*)\"\\s*-->");
 
+    public static List<String> listProjectNames() throws IOException {
+        List<String> projects = new ArrayList<>();
+        try (var stream = Files.list(Path.of("."))) {
+            stream.filter(path -> path.getFileName().toString().endsWith(".md"))
+                    .map(path -> path.getFileName().toString())
+                    .filter(name -> !isExcludedProjectFile(name))
+                    .sorted(String.CASE_INSENSITIVE_ORDER)
+                    .forEach(name -> projects.add(name.substring(0, name.length() - 3)));
+        }
+        return projects;
+    }
+
     public static BoardSnapshot loadBoard(String projectName) throws IOException {
-        Path path = Path.of(projectName + ".md");
+        Path path = projectPath(projectName);
         if (!Files.exists(path)) {
             throw new IOException("El archivo " + projectName + ".md no existe.");
         }
@@ -96,7 +110,7 @@ public class LocalProjectService {
     }
 
     public static void saveBoard(String projectName, String projectTitle, List<KanbanCard> cards) throws IOException {
-        Path path = Path.of(projectName + ".md");
+        Path path = projectPath(projectName);
         StringBuilder sb = new StringBuilder();
         sb.append("# ").append(projectTitle).append("\n\n");
 
@@ -122,5 +136,63 @@ public class LocalProjectService {
         }
 
         Files.writeString(path, sb.toString(), StandardCharsets.UTF_8);
+    }
+
+    public static void renameProject(String currentProjectName, String newProjectName, String newProjectTitle) throws IOException {
+        String normalizedCurrent = normalizeProjectName(currentProjectName);
+        String normalizedNew = normalizeProjectName(newProjectName);
+        if (normalizedCurrent.isBlank()) {
+            throw new IOException("El proyecto actual no es valido.");
+        }
+
+        if (normalizedNew.isBlank()) {
+            throw new IOException("El nuevo nombre del proyecto no puede estar vacio.");
+        }
+
+        if (!normalizedCurrent.equals(normalizedNew) && Files.exists(projectPath(normalizedNew))) {
+            throw new IOException("Ya existe un proyecto con ese nombre.");
+        }
+
+        BoardSnapshot snapshot = loadBoard(normalizedCurrent);
+        List<KanbanCard> cards = new ArrayList<>(snapshot.cards());
+        saveBoard(normalizedNew, newProjectTitle, cards);
+
+        if (!normalizedCurrent.equals(normalizedNew)) {
+            try {
+                Files.deleteIfExists(projectPath(normalizedCurrent));
+            } catch (IOException ex) {
+                Files.deleteIfExists(projectPath(normalizedNew));
+                throw ex;
+            }
+        }
+    }
+
+    public static void deleteProject(String projectName) throws IOException {
+        String normalized = normalizeProjectName(projectName);
+        if (normalized.isBlank()) {
+            throw new IOException("El proyecto no es valido.");
+        }
+
+        Path path = projectPath(normalized);
+        if (!Files.deleteIfExists(path)) {
+            throw new IOException("El archivo " + normalized + ".md no existe.");
+        }
+    }
+
+    private static Path projectPath(String projectName) {
+        return Path.of(normalizeProjectName(projectName) + ".md");
+    }
+
+    private static boolean isExcludedProjectFile(String fileName) {
+        for (String excluded : EXCLUDED_PROJECT_FILES) {
+            if (excluded.equalsIgnoreCase(fileName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String normalizeProjectName(String projectName) {
+        return projectName == null ? "" : projectName.trim();
     }
 }
