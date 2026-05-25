@@ -328,8 +328,9 @@ public class KanbanBoardView extends BorderPane {
                     cardBodyArea.getText().trim(),
                     cardColumnBox.getValue()
             );
+            Consumer<CardInput> action = cardModalSaveAction;
             hideCardModal();
-            cardModalSaveAction.accept(input);
+            action.accept(input);
         });
 
         HBox actions = new HBox(10, cancelBtn, saveBtn);
