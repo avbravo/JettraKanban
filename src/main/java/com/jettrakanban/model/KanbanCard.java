@@ -14,12 +14,18 @@ public class KanbanCard {
     private KanbanColumn column;
     private String createdBy;
     private LocalDateTime createdAt;
+    private String sprintId;
 
     public KanbanCard(String itemId, String contentId, boolean draftIssue, String title, String body, KanbanColumn column) {
-        this(itemId, contentId, draftIssue, title, body, column, null, null);
+        this(itemId, contentId, draftIssue, title, body, column, null, null, null);
     }
 
     public KanbanCard(String itemId, String contentId, boolean draftIssue, String title, String body, KanbanColumn column, String createdBy, LocalDateTime createdAt) {
+        this(itemId, contentId, draftIssue, title, body, column, createdBy, createdAt, null);
+    }
+
+    public KanbanCard(String itemId, String contentId, boolean draftIssue, String title, String body,
+                      KanbanColumn column, String createdBy, LocalDateTime createdAt, String sprintId) {
         this.itemId = itemId;
         this.contentId = contentId;
         this.draftIssue = draftIssue;
@@ -28,6 +34,7 @@ public class KanbanCard {
         this.column = column;
         this.createdBy = createdBy;
         this.createdAt = createdAt;
+        this.sprintId = sprintId;
     }
 
     public String itemId() {
@@ -85,5 +92,13 @@ public class KanbanCard {
     public String createdAtFormatted() {
         if (createdAt == null) return "";
         return createdAt.format(DISPLAY_FMT);
+    }
+
+    public String sprintId() {
+        return sprintId;
+    }
+
+    public void setSprintId(String sprintId) {
+        this.sprintId = sprintId;
     }
 }

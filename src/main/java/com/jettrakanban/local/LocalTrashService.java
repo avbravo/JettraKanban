@@ -115,6 +115,7 @@ public final class LocalTrashService {
         payload.put("column", referenceCard.column().name());
         payload.put("createdBy", referenceCard.createdBy() == null ? "" : referenceCard.createdBy());
         payload.put("createdAt", referenceCard.createdAt() == null ? "" : referenceCard.createdAt().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+        payload.put("sprintId", referenceCard.sprintId() == null ? "" : referenceCard.sprintId());
         payload.put("trashedAt", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
 
         Path target = TRASH_CARDS.resolve(timestamp() + "__" + safeToken(normalizedProjectName) + "__" + safeToken(referenceCard.title()) + ".json");
@@ -165,12 +166,14 @@ public final class LocalTrashService {
         KanbanColumn column = KanbanColumn.fromStatusName(payload.path("column").asText(KanbanColumn.BACKLOG.displayName()));
         String createdBy = payload.path("createdBy").asText("");
         String createdAtText = payload.path("createdAt").asText("");
+        String sprintId = payload.path("sprintId").asText("");
         LocalDateTime createdAt = createdAtText.isBlank() ? null : LocalDateTime.parse(createdAtText, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
 
         cards.add(new KanbanCard(UUID.randomUUID().toString(), UUID.randomUUID().toString(), true,
                 title, body, column,
                 createdBy.isBlank() ? null : createdBy,
-                createdAt));
+            createdAt,
+            sprintId.isBlank() ? null : sprintId));
 
         LocalProjectService.saveBoard(projectName, snapshot.projectTitle(), cards);
         Files.deleteIfExists(filePath);
