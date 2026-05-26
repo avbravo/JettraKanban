@@ -9,14 +9,14 @@ Cuentas por pagar, cuentas por pagar, reportes, abonos. Crear los repository, co
 
 
 ## To Do
+
+## In Progress
 ### Configurar el baseUri en el archivo jettra-config.properties
 <!-- jettra-meta created-by="avbravo" created-at="2026-05-26T15:18:13.872104784" sprint-id="afa147e0-0265-43b2-a019-ed664af6d198" -->
 En JettraWebExample analizar la clase
 Analizar las clases RestClient y configurar el baseUri en el archivo jettra-config.properties 
 baseUri = "http://localhost:8080/api/library/authors"
 
-
-## In Progress
 
 ## Review
 
