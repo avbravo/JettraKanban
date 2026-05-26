@@ -4,6 +4,7 @@ import com.jettrakanban.config.AppConfig;
 import com.jettrakanban.github.GitHubProjectService;
 import com.jettrakanban.export.PdfExportService;
 import com.jettrakanban.local.LocalProjectService;
+import com.jettrakanban.local.LocalSprintService;
 import com.jettrakanban.local.LocalTrashService;
 import com.jettrakanban.model.KanbanCard;
 import com.jettrakanban.model.KanbanColumn;
@@ -23,6 +24,7 @@ import javafx.scene.control.ScrollPane;
 import javafx.scene.control.ScrollPane.ScrollBarPolicy;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
+import javafx.scene.control.OverrunStyle;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
@@ -40,6 +42,7 @@ import javafx.stage.Window;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -78,11 +81,18 @@ public class KanbanBoardView extends BorderPane {
     private final Label localProjectLabel = new Label("Proyecto:");
     private final ComboBox<String> localProjectComboBox = new ComboBox<>();
     private final Button loadLocalBtn = new Button("↺");
-    private final Button newLocalBtn = new Button("＋");
+    private final Button newLocalBtn = new Button("+");
     private final Button editLocalBtn = new Button("✎");
     private final Button deleteLocalBtn = new Button("🗑");
     private final Button trashBtn = new Button("♻");
-    private final Button exportPdfBtn = new Button("📄");
+    private final Label sprintLabel = new Label("Sprint:"); 
+    private final ComboBox<String> sprintComboBox = new ComboBox<>();
+    private final Button newSprintBtn = new Button("+");
+    private final Button editSprintBtn = new Button("✎");
+    private final Button deleteSprintBtn = new Button("🗑");
+    private final Button reopenSprintBtn = new Button("🔓");
+    private final Button closeSprintBtn = new Button("🗜️");
+    private final Button exportPdfBtn = new Button("🖨️");
 
     private final Label projectTitleLabel = new Label("JettraKanban - Offline");
     private final Label statusLabel = new Label("Ingresa URL de proyecto + credenciales para sincronizar.");
@@ -97,19 +107,25 @@ public class KanbanBoardView extends BorderPane {
     private final TextField cardTitleField = new TextField();
     private final TextArea cardBodyArea = new TextArea();
     private final ComboBox<KanbanColumn> cardColumnBox = new ComboBox<>();
+    private final Label cardSprintLabel = new Label("Sprint");
+    private final ComboBox<String> cardSprintBox = new ComboBox<>();
     private Consumer<CardInput> cardModalSaveAction;
 
     // Common buttons promoted to instance variables
     private final Button connectBtn = new Button("🔗");
     private final Button forgetBtn = new Button("🧼");
     private final Button refreshBtn = new Button("⟳");
-    private final Button newCardBtn = new Button("＋");
+    private final Button newCardBtn = new Button("+");
 
     private GitHubProjectService service;
     private String statusFieldId = "";
     private Map<KanbanColumn, String> optionByColumn = new EnumMap<>(KanbanColumn.class);
     private String currentProjectTitle = "JettraKanban - Offline";
     private List<KanbanCard> currentCardsSnapshot = new ArrayList<>();
+    private final Map<String, String> sprintIdByOption = new HashMap<>();
+    private final Map<String, String> cardSprintIdByOption = new HashMap<>();
+    private List<LocalSprintService.Sprint> currentSprints = new ArrayList<>();
+    private String selectedSprintId = null;
 
     private boolean localMode = false;
     private String activeLocalProject = null;
@@ -169,10 +185,23 @@ public class KanbanBoardView extends BorderPane {
         newLocalBtn.setOnAction(event -> onCreateLocalProject());
         editLocalBtn.setOnAction(event -> onEditLocalProject());
         deleteLocalBtn.setOnAction(event -> onDeleteLocalProject());
+        sprintComboBox.setPromptText("Todos");
+        sprintComboBox.setMinWidth(230);
+        sprintComboBox.setOnAction(event -> onSprintSelected());
+        newSprintBtn.setOnAction(event -> onCreateSprint());
+        editSprintBtn.setOnAction(event -> onEditSprint());
+        deleteSprintBtn.setOnAction(event -> onDeleteSprint());
+        reopenSprintBtn.setOnAction(event -> onReopenSprint());
+        closeSprintBtn.setOnAction(event -> onCloseSprint());
         iconButton(loadLocalBtn, "Cargar proyecto local");
         iconButton(newLocalBtn, "Nuevo proyecto local");
         iconButton(editLocalBtn, "Editar proyecto local");
         iconButton(deleteLocalBtn, "Enviar proyecto a la papelera");
+        iconButton(newSprintBtn, "Crear sprint");
+        iconButton(editSprintBtn, "Editar sprint seleccionado");
+        iconButton(deleteSprintBtn, "Eliminar sprint seleccionado");
+        iconButton(reopenSprintBtn, "Reabrir sprint cerrado");
+        iconButton(closeSprintBtn, "Cerrar sprint abierto");
 
         // Hide local controls by default
         localProjectLabel.setVisible(false);
@@ -187,6 +216,20 @@ public class KanbanBoardView extends BorderPane {
         editLocalBtn.setManaged(false);
         deleteLocalBtn.setVisible(false);
         deleteLocalBtn.setManaged(false);
+        sprintLabel.setVisible(false);
+        sprintLabel.setManaged(false);
+        sprintComboBox.setVisible(false);
+        sprintComboBox.setManaged(false);
+        newSprintBtn.setVisible(false);
+        newSprintBtn.setManaged(false);
+        editSprintBtn.setVisible(false);
+        editSprintBtn.setManaged(false);
+        deleteSprintBtn.setVisible(false);
+        deleteSprintBtn.setManaged(false);
+        reopenSprintBtn.setVisible(false);
+        reopenSprintBtn.setManaged(false);
+        closeSprintBtn.setVisible(false);
+        closeSprintBtn.setManaged(false);
         trashBtn.setVisible(false);
         trashBtn.setManaged(false);
         exportPdfBtn.setVisible(false);
@@ -213,6 +256,13 @@ public class KanbanBoardView extends BorderPane {
                 newLocalBtn,
                 editLocalBtn,
                 deleteLocalBtn,
+                sprintLabel,
+                sprintComboBox,
+                newSprintBtn,
+                editSprintBtn,
+                deleteSprintBtn,
+                reopenSprintBtn,
+                closeSprintBtn,
                 trashBtn,
                 exportPdfBtn,
                 refreshBtn
@@ -256,6 +306,20 @@ public class KanbanBoardView extends BorderPane {
         editLocalBtn.setManaged(isLocal);
         deleteLocalBtn.setVisible(isLocal);
         deleteLocalBtn.setManaged(isLocal);
+        sprintLabel.setVisible(isLocal);
+        sprintLabel.setManaged(isLocal);
+        sprintComboBox.setVisible(isLocal);
+        sprintComboBox.setManaged(isLocal);
+        newSprintBtn.setVisible(isLocal);
+        newSprintBtn.setManaged(isLocal);
+        editSprintBtn.setVisible(isLocal);
+        editSprintBtn.setManaged(isLocal);
+        deleteSprintBtn.setVisible(isLocal);
+        deleteSprintBtn.setManaged(isLocal);
+        reopenSprintBtn.setVisible(isLocal);
+        reopenSprintBtn.setManaged(isLocal);
+        closeSprintBtn.setVisible(isLocal);
+        closeSprintBtn.setManaged(isLocal);
         trashBtn.setVisible(isLocal);
         trashBtn.setManaged(isLocal);
         exportPdfBtn.setVisible(true);
@@ -283,6 +347,329 @@ public class KanbanBoardView extends BorderPane {
             localProjectComboBox.getItems().clear();
             setStatus("No se pudo cargar la lista de proyectos locales: " + ex.getMessage());
         }
+    }
+
+    private void refreshSprintControls() {
+        sprintIdByOption.clear();
+        cardSprintIdByOption.clear();
+        currentSprints = new ArrayList<>();
+
+        if (!localMode || activeLocalProject == null || activeLocalProject.isBlank()) {
+            sprintComboBox.getItems().setAll("Todos");
+            sprintComboBox.setValue("Todos");
+            selectedSprintId = null;
+            return;
+        }
+
+        try {
+            currentSprints = LocalSprintService.listSprints(activeLocalProject);
+            List<String> options = new ArrayList<>();
+            options.add("Todos");
+            sprintIdByOption.put("Todos", null);
+
+            String selectedOption = null;
+            for (LocalSprintService.Sprint sprint : currentSprints) {
+                String option = sprint.label();
+                options.add(option);
+                sprintIdByOption.put(option, sprint.id());
+                if (Objects.equals(selectedSprintId, sprint.id())) {
+                    selectedOption = option;
+                }
+            }
+
+            if (selectedOption == null) {
+                for (LocalSprintService.Sprint sprint : currentSprints) {
+                    if (sprint.status() == LocalSprintService.SprintStatus.OPEN) {
+                        selectedOption = sprint.label();
+                        selectedSprintId = sprint.id();
+                        break;
+                    }
+                }
+            }
+
+            sprintComboBox.getItems().setAll(options);
+            if (selectedOption != null) {
+                sprintComboBox.setValue(selectedOption);
+            } else {
+                selectedSprintId = null;
+                sprintComboBox.setValue("Todos");
+            }
+        } catch (IOException ex) {
+            selectedSprintId = null;
+            sprintComboBox.getItems().setAll("Todos");
+            sprintComboBox.setValue("Todos");
+            setStatus("No se pudieron cargar los sprints: " + ex.getMessage());
+        }
+    }
+
+    private void onSprintSelected() {
+        String option = sprintComboBox.getValue();
+        selectedSprintId = sprintIdByOption.get(option);
+        renderCards(currentCardsSnapshot);
+    }
+
+    private void onCreateSprint() {
+        if (!localMode || activeLocalProject == null || activeLocalProject.isBlank()) {
+            showError("Sin proyecto", "Selecciona un proyecto local para crear un sprint.");
+            return;
+        }
+
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("JettraKanban");
+        dialog.setHeaderText("Crear sprint");
+
+        TextField nameField = new TextField();
+        nameField.setPromptText("Nombre del sprint");
+        TextField startField = new TextField(LocalDate.now().toString());
+        startField.setPromptText("Fecha inicio (yyyy-MM-dd)");
+        TextField endField = new TextField(LocalDate.now().plusDays(14).toString());
+        endField.setPromptText("Fecha fin (yyyy-MM-dd)");
+
+        VBox content = new VBox(8,
+                new Label("Nombre"), nameField,
+                new Label("Fecha inicio"), startField,
+                new Label("Fecha fin"), endField);
+        dialog.getDialogPane().setContent(content);
+        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+
+        if (dialog.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) {
+            return;
+        }
+
+        LocalDate startDate;
+        LocalDate endDate;
+        try {
+            startDate = LocalDate.parse(startField.getText().trim());
+            endDate = LocalDate.parse(endField.getText().trim());
+        } catch (Exception ex) {
+            showError("Fechas invalidas", "Usa el formato yyyy-MM-dd para las fechas del sprint.");
+            return;
+        }
+
+        if (endDate.isBefore(startDate)) {
+            showError("Rango invalido", "La fecha fin no puede ser menor que la fecha inicio.");
+            return;
+        }
+
+        CompletableFuture.runAsync(() -> {
+            try {
+                GitHubProjectService.BoardSnapshot snapshot = LocalProjectService.loadBoard(activeLocalProject);
+                LocalSprintService.CreateSprintResult result = LocalSprintService.createSprint(
+                        activeLocalProject,
+                        nameField.getText().trim(),
+                        startDate,
+                        endDate,
+                        new ArrayList<>(snapshot.cards())
+                );
+
+                LocalProjectService.saveBoard(activeLocalProject, snapshot.projectTitle(), result.updatedCards());
+                selectedSprintId = result.sprint().id();
+                Platform.runLater(() -> {
+                    refreshBoard();
+                    setStatus("Sprint creado: " + result.sprint().name() + " | tarjetas trasladadas: " + result.movedCards());
+                });
+            } catch (IOException ex) {
+                Platform.runLater(() -> showError("No se pudo crear el sprint", ex.getMessage()));
+            }
+        });
+    }
+
+    private void onCloseSprint() {
+        if (!localMode || activeLocalProject == null || activeLocalProject.isBlank()) {
+            showError("Sin proyecto", "Selecciona un proyecto local para cerrar el sprint.");
+            return;
+        }
+
+        CompletableFuture.runAsync(() -> {
+            try {
+                GitHubProjectService.BoardSnapshot snapshot = LocalProjectService.loadBoard(activeLocalProject);
+                LocalSprintService.CloseSprintResult result = LocalSprintService.closeOpenSprint(activeLocalProject, snapshot.cards());
+                selectedSprintId = null;
+
+                Platform.runLater(() -> {
+                    Alert info = new Alert(AlertType.INFORMATION);
+                    info.setTitle("JettraKanban");
+                    info.setHeaderText("Sprint cerrado: " + result.sprint().name());
+                    LocalSprintService.SprintSummary summary = result.summary();
+                    info.setContentText("Totales del sprint\n"
+                            + "Terminados: " + summary.finished() + "\n"
+                            + "Pendientes: " + summary.pending() + "\n"
+                            + "En progreso: " + summary.inProgress() + "\n"
+                            + "Total: " + summary.total());
+                    info.showAndWait();
+
+                    refreshBoard();
+                    setStatus("Sprint cerrado: " + result.sprint().name());
+                });
+            } catch (IOException ex) {
+                Platform.runLater(() -> showError("No se pudo cerrar el sprint", ex.getMessage()));
+            }
+        });
+    }
+
+    private void onEditSprint() {
+        if (!localMode || activeLocalProject == null || activeLocalProject.isBlank()) {
+            showError("Sin proyecto", "Selecciona un proyecto local para editar un sprint.");
+            return;
+        }
+        if (selectedSprintId == null) {
+            showError("Sin sprint", "Selecciona un sprint en el filtro para editarlo.");
+            return;
+        }
+
+        LocalSprintService.Sprint sprint = LocalSprintService.sprintById(currentSprints, selectedSprintId);
+        if (sprint == null) {
+            showError("Sprint no encontrado", "El sprint seleccionado ya no existe.");
+            refreshSprintControls();
+            return;
+        }
+
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("JettraKanban");
+        dialog.setHeaderText("Editar sprint");
+
+        TextField nameField = new TextField(sprint.name());
+        nameField.setPromptText("Nombre del sprint");
+        TextField startField = new TextField(sprint.startDate());
+        startField.setPromptText("Fecha inicio (yyyy-MM-dd)");
+        TextField endField = new TextField(sprint.endDate());
+        endField.setPromptText("Fecha fin (yyyy-MM-dd)");
+
+        VBox content = new VBox(8,
+                new Label("Nombre"), nameField,
+                new Label("Fecha inicio"), startField,
+                new Label("Fecha fin"), endField);
+        dialog.getDialogPane().setContent(content);
+        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+
+        if (dialog.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) {
+            return;
+        }
+
+        LocalDate startDate;
+        LocalDate endDate;
+        try {
+            startDate = LocalDate.parse(startField.getText().trim());
+            endDate = LocalDate.parse(endField.getText().trim());
+        } catch (Exception ex) {
+            showError("Fechas invalidas", "Usa el formato yyyy-MM-dd para las fechas del sprint.");
+            return;
+        }
+
+        CompletableFuture.runAsync(() -> {
+            try {
+                LocalSprintService.Sprint edited = LocalSprintService.editSprint(
+                        activeLocalProject,
+                        sprint.id(),
+                        nameField.getText().trim(),
+                        startDate,
+                        endDate
+                );
+
+                Platform.runLater(() -> {
+                    selectedSprintId = edited.id();
+                    refreshSprintControls();
+                    renderCards(currentCardsSnapshot);
+                    setStatus("Sprint actualizado: " + edited.name());
+                });
+            } catch (IOException ex) {
+                Platform.runLater(() -> showError("No se pudo editar el sprint", ex.getMessage()));
+            }
+        });
+    }
+
+    private void onDeleteSprint() {
+        if (!localMode || activeLocalProject == null || activeLocalProject.isBlank()) {
+            showError("Sin proyecto", "Selecciona un proyecto local para eliminar un sprint.");
+            return;
+        }
+        if (selectedSprintId == null) {
+            showError("Sin sprint", "Selecciona un sprint en el filtro para eliminarlo.");
+            return;
+        }
+
+        LocalSprintService.Sprint sprint = LocalSprintService.sprintById(currentSprints, selectedSprintId);
+        if (sprint == null) {
+            showError("Sprint no encontrado", "El sprint seleccionado ya no existe.");
+            refreshSprintControls();
+            return;
+        }
+
+        long assignedCards = currentCardsSnapshot.stream()
+                .filter(card -> Objects.equals(sprint.id(), card.sprintId()))
+                .count();
+
+        Alert confirm = new Alert(AlertType.CONFIRMATION);
+        confirm.setTitle("JettraKanban");
+        confirm.setHeaderText("Eliminar sprint");
+        confirm.setContentText("Se eliminara el sprint \"" + sprint.name() + "\" y " + assignedCards
+                + " tarjeta(s) quedaran sin sprint. Quieres continuar?");
+        if (confirm.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) {
+            return;
+        }
+
+        CompletableFuture.runAsync(() -> {
+            try {
+                GitHubProjectService.BoardSnapshot snapshot = LocalProjectService.loadBoard(activeLocalProject);
+                LocalSprintService.DeleteSprintResult result = LocalSprintService.deleteSprint(
+                        activeLocalProject,
+                        sprint.id(),
+                        new ArrayList<>(snapshot.cards())
+                );
+                LocalProjectService.saveBoard(activeLocalProject, snapshot.projectTitle(), result.updatedCards());
+
+                Platform.runLater(() -> {
+                    selectedSprintId = null;
+                    refreshBoard();
+                    setStatus("Sprint eliminado: " + result.deletedSprint().name() + " | tarjetas sin sprint: " + result.unassignedCards());
+                });
+            } catch (IOException ex) {
+                Platform.runLater(() -> showError("No se pudo eliminar el sprint", ex.getMessage()));
+            }
+        });
+    }
+
+    private void onReopenSprint() {
+        if (!localMode || activeLocalProject == null || activeLocalProject.isBlank()) {
+            showError("Sin proyecto", "Selecciona un proyecto local para reabrir un sprint.");
+            return;
+        }
+        if (selectedSprintId == null) {
+            showError("Sin sprint", "Selecciona un sprint cerrado en el filtro para reabrirlo.");
+            return;
+        }
+
+        LocalSprintService.Sprint sprint = LocalSprintService.sprintById(currentSprints, selectedSprintId);
+        if (sprint == null) {
+            showError("Sprint no encontrado", "El sprint seleccionado ya no existe.");
+            refreshSprintControls();
+            return;
+        }
+        if (sprint.status() != LocalSprintService.SprintStatus.CLOSED) {
+            showError("Sprint abierto", "Solo se puede reabrir un sprint que este cerrado.");
+            return;
+        }
+
+        Alert confirm = new Alert(AlertType.CONFIRMATION);
+        confirm.setTitle("JettraKanban");
+        confirm.setHeaderText("Reabrir sprint");
+        confirm.setContentText("Se reabrira el sprint \"" + sprint.name() + "\". Quieres continuar?");
+        if (confirm.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) {
+            return;
+        }
+
+        CompletableFuture.runAsync(() -> {
+            try {
+                LocalSprintService.Sprint reopened = LocalSprintService.reopenSprint(activeLocalProject, sprint.id());
+                Platform.runLater(() -> {
+                    selectedSprintId = reopened.id();
+                    refreshBoard();
+                    setStatus("Sprint reabierto: " + reopened.name());
+                });
+            } catch (IOException ex) {
+                Platform.runLater(() -> showError("No se pudo reabrir el sprint", ex.getMessage()));
+            }
+        });
     }
 
     private void onCreateLocalProject() {
@@ -399,12 +786,20 @@ public class KanbanBoardView extends BorderPane {
             return;
         }
         activeLocalProject = projectName;
+        selectedSprintId = null;
+        refreshSprintControls();
         refreshBoard();
     }
 
     private void clearLocalBoard(String statusText) {
         cardsByItemId.clear();
         currentCardsSnapshot = new ArrayList<>();
+        currentSprints = new ArrayList<>();
+        sprintIdByOption.clear();
+        cardSprintIdByOption.clear();
+        selectedSprintId = null;
+        sprintComboBox.getItems().setAll("Todos");
+        sprintComboBox.setValue("Todos");
         currentProjectTitle = "JettraKanban - Offline";
         for (VBox pane : columnPanes.values()) {
             pane.getChildren().clear();
@@ -460,6 +855,10 @@ public class KanbanBoardView extends BorderPane {
         Label titleLabel = new Label("Titulo");
         Label bodyLabel = new Label("Descripcion");
         Label columnLabel = new Label("Columna");
+        cardSprintLabel.setVisible(false);
+        cardSprintLabel.setManaged(false);
+        cardSprintBox.setVisible(false);
+        cardSprintBox.setManaged(false);
 
         Button cancelBtn = new Button("Cancelar");
         cancelBtn.getStyleClass().add("subtle-btn");
@@ -477,7 +876,8 @@ public class KanbanBoardView extends BorderPane {
             CardInput input = new CardInput(
                     cardTitleField.getText().trim(),
                     cardBodyArea.getText().trim(),
-                    cardColumnBox.getValue()
+                    cardColumnBox.getValue(),
+                    cardSprintIdByOption.get(cardSprintBox.getValue())
             );
             Consumer<CardInput> action = cardModalSaveAction;
             hideCardModal();
@@ -498,6 +898,8 @@ public class KanbanBoardView extends BorderPane {
                 cardBodyArea,
                 columnLabel,
                 cardColumnBox,
+                cardSprintLabel,
+                cardSprintBox,
                 actions
         );
 
@@ -580,6 +982,16 @@ public class KanbanBoardView extends BorderPane {
         title.setWrapText(true);
         title.setMouseTransparent(true);
 
+        Label sprintBadgeLabel = null;
+        if (localMode && card.sprintId() != null && !card.sprintId().isBlank()) {
+            String sprintText = resolveSprintBadgeText(card);
+            if (sprintText != null) {
+                sprintBadgeLabel = new Label(sprintText);
+                sprintBadgeLabel.getStyleClass().add("card-sprint-badge");
+                sprintBadgeLabel.setMouseTransparent(true);
+            }
+        }
+
         Label body = new Label(card.body());
         body.getStyleClass().add("card-body");
         body.setWrapText(true);
@@ -608,7 +1020,12 @@ public class KanbanBoardView extends BorderPane {
         HBox controls = new HBox(8, moveCombo, editBtn, deleteBtn);
         controls.setAlignment(Pos.CENTER_LEFT);
 
-        VBox cardPane = new VBox(8, title, body, controls);
+        VBox cardPane = new VBox(8);
+        cardPane.getChildren().add(title);
+        if (sprintBadgeLabel != null) {
+            cardPane.getChildren().add(sprintBadgeLabel);
+        }
+        cardPane.getChildren().addAll(body, controls);
         if (card.createdBy() != null || card.createdAt() != null) {
             StringBuilder metaText = new StringBuilder();
             if (card.createdBy() != null) metaText.append(card.createdBy());
@@ -757,8 +1174,10 @@ public class KanbanBoardView extends BorderPane {
                         projectTitleLabel.setText("JettraKanban | [Local] " + snapshot.projectTitle());
                         statusFieldId = "";
                         optionByColumn.clear();
+                        refreshSprintControls();
                         renderCards(snapshot.cards());
-                        setStatus("Proyecto local cargado: " + snapshot.cards().size() + " tarjetas.");
+                        int visible = countVisibleCards(snapshot.cards());
+                        setStatus("Proyecto local cargado: " + visible + " tarjetas visibles de " + snapshot.cards().size() + ".");
                     }))
                     .exceptionally(error -> {
                         Platform.runLater(() -> {
@@ -815,9 +1234,25 @@ public class KanbanBoardView extends BorderPane {
         sorted.sort(Comparator.comparing(KanbanCard::title, String.CASE_INSENSITIVE_ORDER));
 
         for (KanbanCard card : sorted) {
+            if (selectedSprintId != null && !Objects.equals(selectedSprintId, card.sprintId())) {
+                continue;
+            }
             cardsByItemId.put(card.itemId(), card);
             columnPanes.get(card.column()).getChildren().add(createCardNode(card));
         }
+    }
+
+    private int countVisibleCards(List<KanbanCard> cards) {
+        if (selectedSprintId == null) {
+            return cards.size();
+        }
+        int count = 0;
+        for (KanbanCard card : cards) {
+            if (Objects.equals(selectedSprintId, card.sprintId())) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private void onCreateCard() {
@@ -827,13 +1262,13 @@ public class KanbanBoardView extends BorderPane {
                 return;
             }
             String currentUser = resolveCurrentUser();
-            openCardModal("Nueva tarjeta", "", "", KanbanColumn.BACKLOG, null, null, input -> CompletableFuture.runAsync(() -> {
+            openCardModal("Nueva tarjeta", "", "", KanbanColumn.BACKLOG, null, null, selectedSprintId, input -> CompletableFuture.runAsync(() -> {
                 try {
                     com.jettrakanban.github.GitHubProjectService.BoardSnapshot snapshot =
                             com.jettrakanban.local.LocalProjectService.loadBoard(activeLocalProject);
                     List<KanbanCard> cards = new ArrayList<>(snapshot.cards());
                     String itemId = UUID.randomUUID().toString();
-                    cards.add(new KanbanCard(itemId, itemId, true, input.title(), input.body(), input.column(), currentUser, LocalDateTime.now()));
+                    cards.add(new KanbanCard(itemId, itemId, true, input.title(), input.body(), input.column(), currentUser, LocalDateTime.now(), input.sprintId()));
                     com.jettrakanban.local.LocalProjectService.saveBoard(activeLocalProject, snapshot.projectTitle(), cards);
                     Platform.runLater(() -> {
                         setStatus("Tarjeta creada localmente: " + input.title());
@@ -849,7 +1284,7 @@ public class KanbanBoardView extends BorderPane {
                 return;
             }
 
-            openCardModal("Nueva tarjeta", "", "", KanbanColumn.BACKLOG, null, null, input -> CompletableFuture.runAsync(() -> {
+            openCardModal("Nueva tarjeta", "", "", KanbanColumn.BACKLOG, null, null, null, input -> CompletableFuture.runAsync(() -> {
                 try {
                     service.createCard(input.title(), input.body(), input.column(), statusFieldId, optionByColumn);
                     Platform.runLater(() -> {
@@ -901,7 +1336,7 @@ public class KanbanBoardView extends BorderPane {
     private void onEditCard(KanbanCard card) {
         if (localMode) {
             if (activeLocalProject == null) return;
-            openCardModal("Editar tarjeta", card.title(), card.body(), card.column(), card.createdBy(), card.createdAt(), input -> CompletableFuture.runAsync(() -> {
+            openCardModal("Editar tarjeta", card.title(), card.body(), card.column(), card.createdBy(), card.createdAt(), card.sprintId(), input -> CompletableFuture.runAsync(() -> {
                 try {
                     com.jettrakanban.github.GitHubProjectService.BoardSnapshot snapshot =
                             com.jettrakanban.local.LocalProjectService.loadBoard(activeLocalProject);
@@ -911,6 +1346,7 @@ public class KanbanBoardView extends BorderPane {
                             c.setTitle(input.title());
                             c.setBody(input.body());
                             c.setColumn(input.column());
+                            c.setSprintId(input.sprintId());
                             break;
                         }
                     }
@@ -928,7 +1364,7 @@ public class KanbanBoardView extends BorderPane {
                 return;
             }
 
-            openCardModal("Editar tarjeta", card.title(), card.body(), card.column(), card.createdBy(), card.createdAt(), input -> CompletableFuture.runAsync(() -> {
+            openCardModal("Editar tarjeta", card.title(), card.body(), card.column(), card.createdBy(), card.createdAt(), null, input -> CompletableFuture.runAsync(() -> {
                 try {
                     service.updateCard(card, input.title(), input.body());
                     if (input.column() != card.column()) {
@@ -953,6 +1389,7 @@ public class KanbanBoardView extends BorderPane {
                                KanbanColumn initialColumn,
                                String createdBy,
                                LocalDateTime createdAt,
+                               String initialSprintId,
                                Consumer<CardInput> onSave) {
         cardModalHeader.setText(header);
         cardTitleField.setText(initialTitle == null ? "" : initialTitle);
@@ -970,6 +1407,37 @@ public class KanbanBoardView extends BorderPane {
             cardMetaLabel.setVisible(false);
             cardMetaLabel.setManaged(false);
         }
+
+        cardSprintIdByOption.clear();
+        cardSprintBox.getItems().clear();
+        if (localMode) {
+            cardSprintLabel.setVisible(true);
+            cardSprintLabel.setManaged(true);
+            cardSprintBox.setVisible(true);
+            cardSprintBox.setManaged(true);
+
+            List<String> options = new ArrayList<>();
+            options.add("Sin sprint");
+            cardSprintIdByOption.put("Sin sprint", null);
+
+            String selectedOption = "Sin sprint";
+            for (LocalSprintService.Sprint sprint : currentSprints) {
+                String option = sprint.label();
+                options.add(option);
+                cardSprintIdByOption.put(option, sprint.id());
+                if (Objects.equals(initialSprintId, sprint.id())) {
+                    selectedOption = option;
+                }
+            }
+            cardSprintBox.getItems().setAll(options);
+            cardSprintBox.setValue(selectedOption);
+        } else {
+            cardSprintLabel.setVisible(false);
+            cardSprintLabel.setManaged(false);
+            cardSprintBox.setVisible(false);
+            cardSprintBox.setManaged(false);
+        }
+
         cardModalSaveAction = onSave;
         cardModalOverlay.setManaged(true);
         cardModalOverlay.setVisible(true);
@@ -1175,9 +1643,11 @@ public class KanbanBoardView extends BorderPane {
     }
 
     private void iconButton(Button button, String tooltipText) {
-        button.setMinWidth(34);
-        button.setPrefWidth(34);
-        button.setMaxWidth(34);
+        button.setMinWidth(42);
+        button.setPrefWidth(42);
+        button.setMaxWidth(42);
+        button.setTextOverrun(OverrunStyle.CLIP);
+        button.setWrapText(false);
         button.setTooltip(new Tooltip(tooltipText));
     }
 
@@ -1186,6 +1656,14 @@ public class KanbanBoardView extends BorderPane {
             return "JettraKanban";
         }
         return value.trim().replaceAll("[\\\\/:*?\"<>|]+", "_");
+    }
+
+    private String resolveSprintBadgeText(KanbanCard card) {
+        LocalSprintService.Sprint sprint = LocalSprintService.sprintById(currentSprints, card.sprintId());
+        if (sprint == null) {
+            return "Sprint eliminado";
+        }
+        return sprint.name() + (sprint.status() == LocalSprintService.SprintStatus.OPEN ? " · Abierto" : " · Cerrado");
     }
 
     private record ProjectLocator(String ownerLogin, int projectNumber) {
@@ -1201,6 +1679,6 @@ public class KanbanBoardView extends BorderPane {
         return name == null ? "" : name.trim().replaceAll("[\\\\/:*?\"<>|]", "_");
     }
 
-    private record CardInput(String title, String body, KanbanColumn column) {
+    private record CardInput(String title, String body, KanbanColumn column, String sprintId) {
     }
 }

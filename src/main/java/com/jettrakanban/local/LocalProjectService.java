@@ -21,8 +21,8 @@ public class LocalProjectService {
 
     private static final String[] EXCLUDED_PROJECT_FILES = {"README.md", "credentials.md", "plan.md", "config.properties"};
 
-    private static final Pattern META_PATTERN = Pattern.compile(
-            "<!--\\s*jettra-meta\\s+created-by=\"([^\"]*)\"\\s+created-at=\"([^\"]*)\"\\s*-->");
+    private static final Pattern META_PATTERN = Pattern.compile("<!--\\s*jettra-meta\\s+.*-->");
+    private static final Pattern META_ATTRIBUTE_PATTERN = Pattern.compile("([a-zA-Z-]+)=\"([^\"]*)\"");
 
     public static List<String> listProjectNames() throws IOException {
         List<String> projects = new ArrayList<>();
@@ -51,6 +51,7 @@ public class LocalProjectService {
         StringBuilder currentCardBody = new StringBuilder();
         String currentCreatedBy = null;
         LocalDateTime currentCreatedAt = null;
+        String currentSprintId = null;
 
         for (String line : lines) {
             String trimmed = line.trim();
@@ -60,11 +61,12 @@ public class LocalProjectService {
                 // Save previous card if exists
                 if (currentCardTitle != null) {
                     String itemId = UUID.randomUUID().toString();
-                    cards.add(new KanbanCard(itemId, itemId, true, currentCardTitle, currentCardBody.toString().trim(), currentColumn, currentCreatedBy, currentCreatedAt));
+                    cards.add(new KanbanCard(itemId, itemId, true, currentCardTitle, currentCardBody.toString().trim(), currentColumn, currentCreatedBy, currentCreatedAt, currentSprintId));
                     currentCardTitle = null;
                     currentCardBody.setLength(0);
                     currentCreatedBy = null;
                     currentCreatedAt = null;
+                    currentSprintId = null;
                 }
                 String colName = line.substring(3).trim();
                 currentColumn = KanbanColumn.fromStatusName(colName);
@@ -72,20 +74,25 @@ public class LocalProjectService {
                 // Save previous card if exists
                 if (currentCardTitle != null) {
                     String itemId = UUID.randomUUID().toString();
-                    cards.add(new KanbanCard(itemId, itemId, true, currentCardTitle, currentCardBody.toString().trim(), currentColumn, currentCreatedBy, currentCreatedAt));
+                    cards.add(new KanbanCard(itemId, itemId, true, currentCardTitle, currentCardBody.toString().trim(), currentColumn, currentCreatedBy, currentCreatedAt, currentSprintId));
                     currentCardBody.setLength(0);
                     currentCreatedBy = null;
                     currentCreatedAt = null;
+                    currentSprintId = null;
                 }
                 currentCardTitle = line.substring(4).trim();
             } else {
                 if (currentCardTitle != null) {
                     Matcher m = META_PATTERN.matcher(trimmed);
                     if (m.matches()) {
-                        currentCreatedBy = m.group(1).isBlank() ? null : m.group(1);
+                        String createdBy = extractMetaAttribute(trimmed, "created-by");
+                        String sprintId = extractMetaAttribute(trimmed, "sprint-id");
+
+                        currentCreatedBy = createdBy == null || createdBy.isBlank() ? null : createdBy;
+                        currentSprintId = sprintId == null || sprintId.isBlank() ? null : sprintId;
                         try {
-                            String atStr = m.group(2);
-                            if (!atStr.isBlank()) {
+                            String atStr = extractMetaAttribute(trimmed, "created-at");
+                            if (atStr != null && !atStr.isBlank()) {
                                 currentCreatedAt = LocalDateTime.parse(atStr, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
                             }
                         } catch (Exception ignored) {
@@ -103,7 +110,7 @@ public class LocalProjectService {
         // Save last card if exists
         if (currentCardTitle != null) {
             String itemId = UUID.randomUUID().toString();
-            cards.add(new KanbanCard(itemId, itemId, true, currentCardTitle, currentCardBody.toString().trim(), currentColumn, currentCreatedBy, currentCreatedAt));
+            cards.add(new KanbanCard(itemId, itemId, true, currentCardTitle, currentCardBody.toString().trim(), currentColumn, currentCreatedBy, currentCreatedAt, currentSprintId));
         }
 
         return new BoardSnapshot(projectTitle, cards, "", new HashMap<>());
@@ -119,12 +126,15 @@ public class LocalProjectService {
             for (KanbanCard card : cards) {
                 if (card.column() == col) {
                     sb.append("### ").append(card.title()).append("\n");
-                    if (card.createdBy() != null || card.createdAt() != null) {
+                    if (card.createdBy() != null || card.createdAt() != null || card.sprintId() != null) {
                         String by = card.createdBy() != null ? card.createdBy() : "";
                         String at = card.createdAt() != null
                                 ? card.createdAt().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) : "";
+                    String sprintId = card.sprintId() != null ? card.sprintId() : "";
                         sb.append("<!-- jettra-meta created-by=\"").append(by)
-                                .append("\" created-at=\"").append(at).append("\" -->\n");
+                        .append("\" created-at=\"").append(at)
+                        .append("\" sprint-id=\"").append(sprintId)
+                        .append("\" -->\n");
                     }
                     if (card.body() != null && !card.body().isBlank()) {
                         sb.append(card.body()).append("\n");
@@ -194,5 +204,15 @@ public class LocalProjectService {
 
     private static String normalizeProjectName(String projectName) {
         return projectName == null ? "" : projectName.trim();
+    }
+
+    private static String extractMetaAttribute(String line, String attributeName) {
+        Matcher matcher = META_ATTRIBUTE_PATTERN.matcher(line);
+        while (matcher.find()) {
+            if (attributeName.equalsIgnoreCase(matcher.group(1))) {
+                return matcher.group(2);
+            }
+        }
+        return null;
     }
 }
