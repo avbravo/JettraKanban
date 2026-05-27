@@ -11,6 +11,11 @@ Cuentas por pagar, cuentas por pagar, reportes, abonos. Crear los repository, co
 ## To Do
 
 ## In Progress
+### Mostrar errores
+<!-- jettra-meta created-by="avbravo" created-at="2026-05-26T22:42:43.902207076" sprint-id="afa147e0-0265-43b2-a019-ed664af6d198" -->
+En la clase AuthorPage.java se generan varios errores al intentar crear un nuevo actor
+mostrar los errores en la interface web y aplicarlo a las demas clases.
+
 ### Configurar el baseUri en el archivo jettra-config.properties
 <!-- jettra-meta created-by="avbravo" created-at="2026-05-26T15:18:13.872104784" sprint-id="afa147e0-0265-43b2-a019-ed664af6d198" -->
 En JettraWebExample analizar la clase
