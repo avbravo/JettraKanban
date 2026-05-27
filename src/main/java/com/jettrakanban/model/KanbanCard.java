@@ -15,6 +15,7 @@ public class KanbanCard {
     private String createdBy;
     private LocalDateTime createdAt;
     private String sprintId;
+    private String sourceProject;
 
     public KanbanCard(String itemId, String contentId, boolean draftIssue, String title, String body, KanbanColumn column) {
         this(itemId, contentId, draftIssue, title, body, column, null, null, null);
@@ -100,5 +101,13 @@ public class KanbanCard {
 
     public void setSprintId(String sprintId) {
         this.sprintId = sprintId;
+    }
+
+    public String sourceProject() {
+        return sourceProject;
+    }
+
+    public void setSourceProject(String sourceProject) {
+        this.sourceProject = sourceProject;
     }
 }

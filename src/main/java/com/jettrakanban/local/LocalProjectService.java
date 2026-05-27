@@ -19,7 +19,9 @@ import java.util.regex.Pattern;
 
 public class LocalProjectService {
 
-    private static final String[] EXCLUDED_PROJECT_FILES = {"README.md", "credentials.md", "plan.md", "config.properties"};
+    public static final String ALL_PROJECT_NAME = "All";
+
+    private static final String[] EXCLUDED_PROJECT_FILES = {"README.md", "credentials.md", "plan.md", "config.properties", "All.md"};
 
     private static final Pattern META_PATTERN = Pattern.compile("<!--\\s*jettra-meta\\s+.*-->");
     private static final Pattern META_ATTRIBUTE_PATTERN = Pattern.compile("([a-zA-Z-]+)=\"([^\"]*)\"");
@@ -37,6 +39,9 @@ public class LocalProjectService {
     }
 
     public static BoardSnapshot loadBoard(String projectName) throws IOException {
+        if (ALL_PROJECT_NAME.equals(projectName)) {
+            throw new IOException("El proyecto 'All' es una vista virtual y no tiene archivo propio.");
+        }
         Path path = projectPath(projectName);
         if (!Files.exists(path)) {
             throw new IOException("El archivo " + projectName + ".md no existe.");
@@ -114,6 +119,22 @@ public class LocalProjectService {
         }
 
         return new BoardSnapshot(projectTitle, cards, "", new HashMap<>());
+    }
+
+    public static List<KanbanCard> loadAllBoards(List<String> projectNames) throws IOException {
+        List<KanbanCard> allCards = new ArrayList<>();
+        for (String project : projectNames) {
+            try {
+                BoardSnapshot snapshot = loadBoard(project);
+                for (KanbanCard card : snapshot.cards()) {
+                    card.setSourceProject(project);
+                    allCards.add(card);
+                }
+            } catch (IOException ignored) {
+                // Skip projects that cannot be loaded
+            }
+        }
+        return allCards;
     }
 
     public static void saveBoard(String projectName, String projectTitle, List<KanbanCard> cards) throws IOException {

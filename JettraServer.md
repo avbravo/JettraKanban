@@ -30,12 +30,14 @@ Api de mensajeria JettraMSQ
 
 
 ## To Do
-### Autoclonacion Dinamica
-<!-- jettra-meta created-by="avbravo" created-at="2026-05-26T21:51:32.847546758" sprint-id="" -->
-Es el mecanismo mediante el cual, el propio servidor se replica creando nuevos servidores que gestionan la carga de trabajo. De manera que manejan los objetos mas viejos liberando al servidor principal de la carga de trabajo y mejorando el rendimiento.
-
 
 ## In Progress
+### Autoclonacion Dinamica
+<!-- jettra-meta created-by="avbravo" created-at="2026-05-26T21:51:32.847546758" sprint-id="" -->
+En JettraServer 
+Autoclonacion Dinamica
+Es el mecanismo mediante el cual, el propio servidor se replica creando nuevos servidores que gestionan la carga de trabajo. De manera que manejan los objetos mas viejos liberando al servidor principal de la carga de trabajo y mejorando el rendimiento.
+
 
 ## Review
 

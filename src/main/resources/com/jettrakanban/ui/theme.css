@@ -116,6 +116,17 @@
     -fx-text-fill: #b8ffea;
 }
 
+.card-project-badge {
+    -fx-background-color: rgba(27, 130, 255, 0.18);
+    -fx-border-color: rgba(27, 130, 255, 0.5);
+    -fx-border-radius: 999;
+    -fx-background-radius: 999;
+    -fx-padding: 3 10 3 10;
+    -fx-font-size: 11px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #a8d4ff;
+}
+
 .card-pane .combo-box,
 .card-pane .combo-box .list-cell {
     -fx-background-color: #141414;

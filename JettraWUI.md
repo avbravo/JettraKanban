@@ -5,6 +5,24 @@
 ## To Do
 
 ## In Progress
+### @CrudView
+<!-- jettra-meta created-by="avbravo" created-at="2026-05-27T08:54:53.283445675" sprint-id="53d40c97-9c59-470a-9ac0-378d1200b3d8" -->
+En la anotacion @CrudView , realizar la misma implementación para el atributo controller
+ Class<?> controller() default void.class;
+que se comporte de manera similar al atributo
+ Class<?> repository() default void.class;
+En las operaciones usadas para CRUD.
+
+
+## Review
+### @CrudView con Controller
+<!-- jettra-meta created-by="avbravo" created-at="2026-05-25T15:15:30.355376462" sprint-id="53d40c97-9c59-470a-9ac0-378d1200b3d8" -->
+Añadir a la anotacion @CrudView la integracion con un enpoint mediante
+Controller, es decir la funcionalidad es similar a la obtenida con un Repository
+pero en este caso seria mediante un endpoint que esta definido en el parametro 
+Controller de CrudView.
+Actualiza la documentacion en JettraWUI/guide/crudview.md
+
 ### @ModelToRecordConversor
 <!-- jettra-meta created-by="avbravo" created-at="2026-05-26T09:19:59.995198611" sprint-id="53d40c97-9c59-470a-9ac0-378d1200b3d8" -->
 @ModelToRecordConversor(goal=)
@@ -75,16 +93,6 @@ public class PersonaConversor {
 
 Crea en JettraWUI la documentacion en /guide/recordtomodel.md y modelproperties.md y añade ejemplos.
 
-### @CrudView con Controller
-<!-- jettra-meta created-by="avbravo" created-at="2026-05-25T15:15:30.355376462" sprint-id="53d40c97-9c59-470a-9ac0-378d1200b3d8" -->
-Añadir a la anotacion @CrudView la integracion con un enpoint mediante
-Controller, es decir la funcionalidad es similar a la obtenida con un Repository
-pero en este caso seria mediante un endpoint que esta definido en el parametro 
-Controller de CrudView.
-Actualiza la documentacion en JettraWUI/guide/crudview.md
-
-
-## Review
 
 ## Done
 

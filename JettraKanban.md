@@ -9,6 +9,10 @@
 ## Review
 
 ## Done
+### Proyecto ALL
+<!-- jettra-meta created-by="avbravo" created-at="2026-05-27T09:57:18.313344256" sprint-id="b5123886-f0b5-40ef-8fef-7a817e82344d" -->
+En el proyecto JettraKanban, añadir un proyecto llamado All, este proyecto permite mostrar en el tablero en las columnas las tarjetas de todos los proyectos, y al moverlas se actualiza el archivo markdown correspondiente a cada proyecto
+
 ### Reportes
 <!-- jettra-meta created-by="avbravo" created-at="2026-05-25T08:51:05.357251235" sprint-id="b5123886-f0b5-40ef-8fef-7a817e82344d" -->
 Añadir la opcion de exportar las tarjetas a PDF

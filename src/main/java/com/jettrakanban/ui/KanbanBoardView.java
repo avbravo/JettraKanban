@@ -129,6 +129,11 @@ public class KanbanBoardView extends BorderPane {
 
     private boolean localMode = false;
     private String activeLocalProject = null;
+    private static final String ALL_PROJECT_NAME = com.jettrakanban.local.LocalProjectService.ALL_PROJECT_NAME;
+
+    private boolean isAllProject() {
+        return ALL_PROJECT_NAME.equals(activeLocalProject);
+    }
 
     public KanbanBoardView() {
         this.appConfig = new AppConfig();
@@ -341,7 +346,9 @@ public class KanbanBoardView extends BorderPane {
 
     private void refreshLocalProjectsList() {
         try {
-            List<String> projects = LocalProjectService.listProjectNames();
+            List<String> projects = new ArrayList<>();
+            projects.add(ALL_PROJECT_NAME);
+            projects.addAll(LocalProjectService.listProjectNames());
             localProjectComboBox.getItems().setAll(projects);
         } catch (IOException ex) {
             localProjectComboBox.getItems().clear();
@@ -355,6 +362,13 @@ public class KanbanBoardView extends BorderPane {
         currentSprints = new ArrayList<>();
 
         if (!localMode || activeLocalProject == null || activeLocalProject.isBlank()) {
+            sprintComboBox.getItems().setAll("Todos");
+            sprintComboBox.setValue("Todos");
+            selectedSprintId = null;
+            return;
+        }
+
+        if (isAllProject()) {
             sprintComboBox.getItems().setAll("Todos");
             sprintComboBox.setValue("Todos");
             selectedSprintId = null;
@@ -788,7 +802,30 @@ public class KanbanBoardView extends BorderPane {
         activeLocalProject = projectName;
         selectedSprintId = null;
         refreshSprintControls();
+        updateAllProjectControls();
         refreshBoard();
+    }
+
+    private void updateAllProjectControls() {
+        boolean isAll = isAllProject();
+        newCardBtn.setDisable(isAll);
+        editLocalBtn.setDisable(isAll);
+        deleteLocalBtn.setDisable(isAll);
+        boolean showSprint = localMode && !isAll;
+        sprintLabel.setVisible(showSprint);
+        sprintLabel.setManaged(showSprint);
+        sprintComboBox.setVisible(showSprint);
+        sprintComboBox.setManaged(showSprint);
+        newSprintBtn.setVisible(showSprint);
+        newSprintBtn.setManaged(showSprint);
+        editSprintBtn.setVisible(showSprint);
+        editSprintBtn.setManaged(showSprint);
+        deleteSprintBtn.setVisible(showSprint);
+        deleteSprintBtn.setManaged(showSprint);
+        reopenSprintBtn.setVisible(showSprint);
+        reopenSprintBtn.setManaged(showSprint);
+        closeSprintBtn.setVisible(showSprint);
+        closeSprintBtn.setManaged(showSprint);
     }
 
     private void clearLocalBoard(String statusText) {
@@ -983,13 +1020,20 @@ public class KanbanBoardView extends BorderPane {
         title.setMouseTransparent(true);
 
         Label sprintBadgeLabel = null;
-        if (localMode && card.sprintId() != null && !card.sprintId().isBlank()) {
+        if (localMode && !isAllProject() && card.sprintId() != null && !card.sprintId().isBlank()) {
             String sprintText = resolveSprintBadgeText(card);
             if (sprintText != null) {
                 sprintBadgeLabel = new Label(sprintText);
                 sprintBadgeLabel.getStyleClass().add("card-sprint-badge");
                 sprintBadgeLabel.setMouseTransparent(true);
             }
+        }
+
+        Label projectBadgeLabel = null;
+        if (isAllProject() && card.sourceProject() != null) {
+            projectBadgeLabel = new Label("📁 " + card.sourceProject());
+            projectBadgeLabel.getStyleClass().add("card-project-badge");
+            projectBadgeLabel.setMouseTransparent(true);
         }
 
         Label body = new Label(card.body());
@@ -1022,6 +1066,9 @@ public class KanbanBoardView extends BorderPane {
 
         VBox cardPane = new VBox(8);
         cardPane.getChildren().add(title);
+        if (projectBadgeLabel != null) {
+            cardPane.getChildren().add(projectBadgeLabel);
+        }
         if (sprintBadgeLabel != null) {
             cardPane.getChildren().add(sprintBadgeLabel);
         }
@@ -1159,6 +1206,10 @@ public class KanbanBoardView extends BorderPane {
                 showError("Sin proyecto", "Selecciona o crea un proyecto local primero.");
                 return;
             }
+            if (isAllProject()) {
+                refreshBoardAll();
+                return;
+            }
             setStatus("Cargando tarjetas locales...");
             CompletableFuture
                     .supplyAsync(() -> {
@@ -1223,6 +1274,36 @@ public class KanbanBoardView extends BorderPane {
         }
     }
 
+    private void refreshBoardAll() {
+        setStatus("Cargando tarjetas de todos los proyectos...");
+        CompletableFuture
+                .supplyAsync(() -> {
+                    try {
+                        List<String> projects = LocalProjectService.listProjectNames();
+                        return LocalProjectService.loadAllBoards(projects);
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                })
+                .thenAccept(cards -> Platform.runLater(() -> {
+                    currentProjectTitle = "All Projects";
+                    currentCardsSnapshot = new ArrayList<>(cards);
+                    projectTitleLabel.setText("JettraKanban | [Local] All Projects");
+                    statusFieldId = "";
+                    optionByColumn.clear();
+                    renderCards(cards);
+                    setStatus("All Projects cargado: " + cards.size() + " tarjetas en total.");
+                }))
+                .exceptionally(error -> {
+                    Platform.runLater(() -> {
+                        String message = error.getCause() == null ? error.getMessage() : error.getCause().getMessage();
+                        showError("Error al cargar proyectos", message);
+                        setStatus("No se pudieron cargar todos los proyectos.");
+                    });
+                    return null;
+                });
+    }
+
     private void renderCards(List<KanbanCard> cards) {
         currentCardsSnapshot = new ArrayList<>(cards);
         cardsByItemId.clear();
@@ -1259,6 +1340,10 @@ public class KanbanBoardView extends BorderPane {
         if (localMode) {
             if (activeLocalProject == null) {
                 showError("Sin proyecto", "Crea o selecciona un proyecto local primero.");
+                return;
+            }
+            if (isAllProject()) {
+                showError("Vista All", "Selecciona un proyecto especifico para crear tarjetas.");
                 return;
             }
             String currentUser = resolveCurrentUser();
@@ -1308,18 +1393,24 @@ public class KanbanBoardView extends BorderPane {
                 showError("Sin proyecto", "Selecciona un proyecto local primero.");
                 return;
             }
+            String targetProject = isAllProject() ? card.sourceProject() : activeLocalProject;
+            if (targetProject == null || targetProject.isBlank()) {
+                showError("Sin proyecto origen", "No se pudo determinar el proyecto de la tarjeta.");
+                return;
+            }
 
             Alert confirm = new Alert(AlertType.CONFIRMATION);
             confirm.setTitle("JettraKanban");
             confirm.setHeaderText("Enviar tarjeta a la papelera");
-            confirm.setContentText("Se movera la tarjeta \"" + card.title() + "\" del proyecto \"" + currentProjectTitle + "\" a la papelera. Quieres continuar?");
+            String projectDisplay = isAllProject() ? targetProject : currentProjectTitle;
+            confirm.setContentText("Se movera la tarjeta \"" + card.title() + "\" del proyecto \"" + projectDisplay + "\" a la papelera. Quieres continuar?");
             if (confirm.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) {
                 return;
             }
 
             CompletableFuture.runAsync(() -> {
                 try {
-                    LocalTrashService.trashCard(activeLocalProject, card);
+                    LocalTrashService.trashCard(targetProject, card);
                     Platform.runLater(() -> {
                         setStatus("Tarjeta enviada a la papelera: " + card.title());
                         refreshBoard();
@@ -1336,10 +1427,15 @@ public class KanbanBoardView extends BorderPane {
     private void onEditCard(KanbanCard card) {
         if (localMode) {
             if (activeLocalProject == null) return;
+            String targetProject = isAllProject() ? card.sourceProject() : activeLocalProject;
+            if (targetProject == null || targetProject.isBlank()) {
+                showError("Sin proyecto origen", "No se pudo determinar el proyecto de la tarjeta.");
+                return;
+            }
             openCardModal("Editar tarjeta", card.title(), card.body(), card.column(), card.createdBy(), card.createdAt(), card.sprintId(), input -> CompletableFuture.runAsync(() -> {
                 try {
                     com.jettrakanban.github.GitHubProjectService.BoardSnapshot snapshot =
-                            com.jettrakanban.local.LocalProjectService.loadBoard(activeLocalProject);
+                            com.jettrakanban.local.LocalProjectService.loadBoard(targetProject);
                     List<KanbanCard> cards = snapshot.cards();
                     for (KanbanCard c : cards) {
                         if (matchesLocalCard(c, card)) {
@@ -1350,7 +1446,7 @@ public class KanbanBoardView extends BorderPane {
                             break;
                         }
                     }
-                    com.jettrakanban.local.LocalProjectService.saveBoard(activeLocalProject, snapshot.projectTitle(), cards);
+                    com.jettrakanban.local.LocalProjectService.saveBoard(targetProject, snapshot.projectTitle(), cards);
                     Platform.runLater(() -> {
                         setStatus("Tarjeta actualizada localmente: " + input.title());
                         refreshBoard();
@@ -1458,10 +1554,15 @@ public class KanbanBoardView extends BorderPane {
 
         if (localMode) {
             if (activeLocalProject == null) return;
+            String targetProject = isAllProject() ? card.sourceProject() : activeLocalProject;
+            if (targetProject == null || targetProject.isBlank()) {
+                showError("Sin proyecto origen", "No se pudo determinar el proyecto de la tarjeta.");
+                return;
+            }
             CompletableFuture.runAsync(() -> {
                 try {
-                    com.jettrakanban.github.GitHubProjectService.BoardSnapshot snapshot = 
-                            com.jettrakanban.local.LocalProjectService.loadBoard(activeLocalProject);
+                    com.jettrakanban.github.GitHubProjectService.BoardSnapshot snapshot =
+                            com.jettrakanban.local.LocalProjectService.loadBoard(targetProject);
                     List<KanbanCard> cards = snapshot.cards();
                     for (KanbanCard c : cards) {
                         if (matchesLocalCard(c, card)) {
@@ -1469,7 +1570,7 @@ public class KanbanBoardView extends BorderPane {
                             break;
                         }
                     }
-                    com.jettrakanban.local.LocalProjectService.saveBoard(activeLocalProject, snapshot.projectTitle(), cards);
+                    com.jettrakanban.local.LocalProjectService.saveBoard(targetProject, snapshot.projectTitle(), cards);
                     Platform.runLater(() -> {
                         setStatus("Tarjeta movida localmente: " + card.title());
                         refreshBoard();
